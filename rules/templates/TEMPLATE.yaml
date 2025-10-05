@@ -1,0 +1,112 @@
+metadata:
+  benchmark: "CIS Benchmark Name and Version"
+  os: "windows or linux"
+  
+  # For Windows:
+  # versions:
+  #   - '10'
+  #   - '11'
+  
+  # For Linux:
+  # distros:
+  #   - ubuntu
+  #   - debian
+  # versions:
+  #   ubuntu: ['20.04', '22.04', '24.04']
+  #   debian: ['10', '11', '12']
+
+rule:
+  id: "OS-NNN"
+  category: "Primary Category"
+  subcategory: "Optional Subcategory"
+  description: "Clear, concise description of what this rule enforces"
+  severity: "low | medium | high | critical"
+  
+  audit:
+    cis_reference: "X.X.X"
+    compliance_frameworks:
+      - "NIST SP 800-53"
+      - "ISO 27001"
+    rationale: |
+      Explain why this security control matters.
+      What risk does it mitigate?
+    impact: |
+      What will happen when this rule is applied?
+      What might break? What workflows are affected?
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: "Value for basic hardening"
+    moderate:
+      enabled: true
+      value: "Value for moderate hardening"
+    strict:
+      enabled: true
+      value: "Value for strict hardening"
+  
+  check:
+    type: command
+    command: |
+      Command to check current state
+      # Should output a value that can be compared
+      # Use exit 0 for compliant, exit 1 for non-compliant
+    expected:
+      type: "string | number | boolean | regex"
+      operator: "== | != | >= | <= | > | < | contains | regex"
+      value: "{{hardening_value}}"
+    timeout: 30
+    retry: 2
+    retry_delay: 5
+  
+  remediation:
+    type: command
+    prerequisites:
+      - "root_access | admin_rights | etc"
+    backup_before: true
+    # warning: |
+    #   Optional warning for high-impact changes
+    # confirmation_required: true
+    command: |
+      Command to apply the hardening
+      # Use {{hardening_value}} to reference the current level's value
+      # Make this idempotent - safe to run multiple times
+    requires_reboot: false
+    timeout: 60
+    verify_after: true
+    verify_command: |
+      Command to verify the remediation was successful
+      # Exit 0 for success, exit 1 for failure
+  
+  rollback:
+    enabled: true
+    backup_location: "{{backup_dir}}/RULE-ID_{{timestamp}}.backup"
+    backup_command: |
+      Command to backup current configuration
+      # Save to {{backup_location}}
+    restore_command: |
+      Command to restore from backup
+      # Restore from {{backup_location}}
+    requires_reboot: false
+    timeout: 60
+  
+  logging:
+    log_level: INFO
+    log_category: "category_name"
+    audit_trail: true
+  
+  reporting:
+    report_section: "Report Section Name"
+    priority: "high | medium | low"
+    remediation_complexity: "low | medium | high"
+  
+  tags:
+    - "tag1"
+    - "tag2"
+    - "cis"
+  
+  notes: |
+    Additional notes, warnings, or related information.
+    - Dependencies on other rules
+    - Special considerations
+    - References to documentation

@@ -1,0 +1,227 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-300
+  category: Logging and Auditing
+  subcategory: Audit Daemon
+  description: Ensure auditd service is enabled and running
+  severity: critical
+  
+  audit:
+    cis_reference: 4.1.2
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+      - HIPAA
+      - SOC 2
+    rationale: |
+      The auditd service is crucial for maintaining a comprehensive audit trail of system events.
+      It provides detailed logging of security-relevant events such as authentication attempts,
+      file access, system calls, and administrative actions. Without auditd, security incidents
+      may go undetected and forensic analysis becomes nearly impossible.
+    impact: |
+      Enabling auditd will begin logging system events which will consume disk space.
+      Ensure adequate disk space is available in /var/log/audit/.
+      There is minimal performance impact on modern systems.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: enabled
+    moderate:
+      enabled: true
+      value: enabled
+    strict:
+      enabled: true
+      value: enabled
+  
+  check:
+    type: command
+    command: |
+      #!/bin/bash
+      # Check if auditd is installed
+      if ! command -v auditd >/dev/null 2>&1; then
+        echo "not_installed"
+        exit 1
+      fi
+      
+      # Check if service is enabled
+      enabled=0
+      if systemctl is-enabled auditd >/dev/null 2>&1; then
+        enabled=1
+      elif [ -f /etc/rc3.d/S*auditd ] || [ -f /etc/rc5.d/S*auditd ]; then
+        enabled=1
+      fi
+      
+      # Check if service is running
+      running=0
+      if systemctl is-active auditd >/dev/null 2>&1; then
+        running=1
+      elif pgrep -x auditd >/dev/null 2>&1; then
+        running=1
+      fi
+      
+      if [ $enabled -eq 1 ] && [ $running -eq 1 ]; then
+        echo "enabled"
+        exit 0
+      elif [ $enabled -eq 1 ] && [ $running -eq 0 ]; then
+        echo "enabled_not_running"
+        exit 1
+      else
+        echo "disabled"
+        exit 1
+      fi
+    expected:
+      type: string
+      operator: "=="
+      value: "enabled"
+    timeout: 30
+    retry: 2
+    retry_delay: 5
+  
+  remediation:
+    type: command
+    prerequisites:
+      - root_access
+      - package_manager
+    backup_before: true
+    command: |
+      #!/bin/bash
+      set -e
+      
+      # Install auditd if not present
+      if ! command -v auditd >/dev/null 2>&1; then
+        echo "Installing auditd..."
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update -qq
+          apt-get install -y auditd audispd-plugins
+        elif command -v yum >/dev/null 2>&1; then
+          yum install -y audit audit-libs
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y audit audit-libs
+        else
+          echo "ERROR: No supported package manager found"
+          exit 1
+        fi
+      fi
+      
+      # Enable auditd service
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl unmask auditd 2>/dev/null || true
+        systemctl enable auditd
+        systemctl start auditd
+      elif command -v chkconfig >/dev/null 2>&1; then
+        chkconfig auditd on
+        service auditd start
+      else
+        echo "ERROR: No supported service manager found"
+        exit 1
+      fi
+      
+      # Verify auditd is running
+      sleep 2
+      if ! pgrep -x auditd >/dev/null 2>&1; then
+        echo "ERROR: auditd failed to start"
+        exit 1
+      fi
+      
+      echo "auditd successfully enabled and started"
+    requires_reboot: false
+    timeout: 120
+    verify_after: true
+    verify_command: |
+      #!/bin/bash
+      if systemctl is-active auditd >/dev/null 2>&1 && \
+         systemctl is-enabled auditd >/dev/null 2>&1; then
+        exit 0
+      else
+        exit 1
+      fi
+  
+  rollback:
+    enabled: true
+    backup_location: "{{backup_dir}}/LNX-300_{{timestamp}}.backup"
+    backup_command: |
+      #!/bin/bash
+      # Save current state
+      {
+        echo "# Auditd state backup - {{timestamp}}"
+        echo "INSTALLED=$(command -v auditd >/dev/null 2>&1 && echo 'yes' || echo 'no')"
+        echo "ENABLED=$(systemctl is-enabled auditd 2>/dev/null || echo 'disabled')"
+        echo "ACTIVE=$(systemctl is-active auditd 2>/dev/null || echo 'inactive')"
+      } > "{{backup_location}}"
+    restore_command: |
+      #!/bin/bash
+      if [ ! -f "{{backup_location}}" ]; then
+        echo "ERROR: Backup file not found"
+        exit 1
+      fi
+      
+      # Source the backup
+      source "{{backup_location}}"
+      
+      # Restore previous state
+      if [ "$ENABLED" = "disabled" ]; then
+        systemctl disable auditd 2>/dev/null || true
+      fi
+      
+      if [ "$ACTIVE" = "inactive" ]; then
+        systemctl stop auditd 2>/dev/null || true
+      fi
+      
+      echo "Auditd state restored to previous configuration"
+    requires_reboot: false
+    timeout: 60
+  
+  logging:
+    log_level: INFO
+    log_category: auditing
+    audit_trail: true
+  
+  reporting:
+    report_section: Logging and Auditing
+    priority: critical
+    remediation_complexity: low
+  
+  tags:
+    - auditing
+    - logging
+    - auditd
+    - compliance
+    - forensics
+    - cis
+  
+  notes: |
+    Critical security control - auditd provides the foundation for system auditing.
+    
+    Related rules:
+    - LNX-301: Configure auditd rules
+    - LNX-302: Configure auditd file retention
+    - LNX-303: Ensure auditd logs are not automatically deleted
+    
+    Post-installation tasks:
+    1. Configure audit rules (/etc/audit/rules.d/)
+    2. Set up log rotation (/etc/audit/auditd.conf)
+    3. Configure remote logging if required
+    4. Monitor disk space in /var/log/audit/
+    
+    Important notes:
+    - Auditd cannot be restarted with systemctl restart (by design)
+    - Use 'service auditd restart' or reboot to restart auditd
+    - Ensure adequate disk space before enabling
+    - Review /etc/audit/auditd.conf for configuration options

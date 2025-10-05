@@ -1,0 +1,120 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-011
+  category: Account Policies
+  subcategory: Account Lockout Policy
+  description: Ensure 'Account lockout threshold' is set to '5 or fewer invalid logon attempt(s), but not 0'
+  severity: high
+  
+  audit:
+    cis_reference: 1.2.2
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+      - HIPAA
+    rationale: Account lockout threshold determines the number of failed logon attempts that causes a user account to be locked. Setting a threshold reduces the likelihood of successful brute-force attacks while balancing against user productivity and help desk workload.
+    impact: User accounts will be locked after the specified number of failed logon attempts. This may increase help desk calls but significantly improves security against password attacks. Setting to 0 disables lockout (not recommended).
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 5
+    moderate:
+      enabled: true
+      value: 4
+    strict:
+      enabled: true
+      value: 3
+  
+  check:
+    type: command
+    command: |
+      $lockoutThreshold = (net accounts | Select-String "Lockout threshold" | ForEach-Object { ($_ -split ":")[1].Trim() -replace '\D+','' })
+      Write-Output $lockoutThreshold
+    expected:
+      type: number
+      operator: "<="
+      value: "{{hardening_value}}"
+    timeout: 30
+    retry: 2
+    retry_delay: 5
+  
+  remediation:
+    type: command
+    prerequisites:
+      - admin_rights
+    backup_before: true
+    command: |
+      $tempFile = [System.IO.Path]::GetTempFileName()
+      "[System Access]`nLockoutBadCount = {{hardening_value}}" | Out-File -FilePath $tempFile -Encoding ASCII
+      secedit /configure /db secedit.sdb /cfg $tempFile /areas SECURITYPOLICY /quiet
+      Remove-Item -Path $tempFile -Force
+    requires_reboot: false
+    timeout: 30
+    verify_after: true
+    verify_command: |
+      $lockoutThreshold = (net accounts | Select-String "Lockout threshold" | ForEach-Object { ($_ -split ":")[1].Trim() -replace '\D+','' })
+      $threshold = [int]$lockoutThreshold
+      if ($threshold -le {{hardening_value}} -and $threshold -ne 0) { exit 0 } else { exit 1 }
+  
+  rollback:
+    enabled: true
+    backup_location: "{{backup_dir}}/WIN-011_{{timestamp}}.cfg"
+    backup_command: |
+      secedit /export /cfg "{{backup_location}}" /areas SECURITYPOLICY /quiet
+    restore_command: |
+      secedit /configure /db secedit.sdb /cfg "{{backup_location}}" /areas SECURITYPOLICY /quiet
+    requires_reboot: false
+    timeout: 30
+  
+  logging:
+    log_level: WARNING
+    log_category: account_lockout
+    audit_trail: true
+  
+  reporting:
+    report_section: Account Policies
+    priority: high
+    remediation_complexity: low
+  
+  tags:
+    - account
+    - lockout
+    - policy
+    - threshold
+    - cis
+    - brute-force
+    - critical
+  
+  notes: |
+    Critical protection against brute-force password attacks.
+    
+    This setting works with:
+    - WIN-010: Account lockout duration (how long accounts stay locked)
+    - WIN-012: Administrator account lockout
+    
+    Recommended thresholds:
+    - 5 attempts: Basic protection, lower help desk impact
+    - 4 attempts: Moderate protection
+    - 3 attempts: Strong protection, higher help desk impact
+    
+    NEVER set to 0 (disabled) - this removes brute-force protection entirely.
+    
+    Important: Configure lockout observation window (not directly configurable via net accounts)
+    to reset the failed attempt counter after a period of time.
+    
+    Monitor Event IDs:
+    - 4740: Account was locked out
+    - 4625: Failed logon attempt
+    
+    Balance considerations:
+    - Too strict = more help desk calls
+    - Too lenient = vulnerable to attacks
+    - Monitor actual attack patterns in your environment

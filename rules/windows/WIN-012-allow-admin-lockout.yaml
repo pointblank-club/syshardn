@@ -1,0 +1,158 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-012
+  category: Account Policies
+  subcategory: Account Lockout Policy
+  description: Ensure 'Allow Administrator account lockout' is set to 'Enabled' (Manual)
+  severity: high
+  
+  audit:
+    cis_reference: 1.2.3
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Historically, the built-in Administrator account could not be locked out regardless of the number of failed logon attempts. This made it a prime target for brute-force attacks. Enabling administrator account lockout significantly improves security by preventing unlimited password guessing attempts.
+    impact: The built-in Administrator account can be locked out after failed logon attempts. Ensure you have an alternative administrative access method (another admin account, physical access, recovery media) before enabling this setting.
+  
+  hardening_levels:
+    basic:
+      enabled: false
+      value: 0
+    moderate:
+      enabled: true
+      value: 1
+    strict:
+      enabled: true
+      value: 1
+  
+  check:
+    type: command
+    command: |
+      # This setting is in the registry under LSA
+      $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+      $value = (Get-ItemProperty -Path $regPath -Name "AllowAdministratorLockout" -ErrorAction SilentlyContinue).AllowAdministratorLockout
+      if ($value -eq $null) {
+        Write-Output "0"
+      } else {
+        Write-Output $value
+      }
+    expected:
+      type: number
+      operator: "=="
+      value: "{{hardening_value}}"
+    timeout: 30
+    retry: 2
+    retry_delay: 5
+  
+  remediation:
+    type: command
+    prerequisites:
+      - admin_rights
+    backup_before: true
+    warning: |
+      CRITICAL WARNING: Enabling this setting can lock out the built-in Administrator account.
+      
+      Before proceeding, ensure you have:
+      1. At least one other administrator account that works
+      2. Physical access to the system or remote management capability
+      3. A recovery plan if lockout occurs
+      4. Documented the administrator password securely
+      
+      Consider creating a "break-glass" administrator account for emergency access.
+    confirmation_required: true
+    command: |
+      $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+      
+      # Ensure the registry path exists
+      if (!(Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+      }
+      
+      # Set the value
+      Set-ItemProperty -Path $regPath -Name "AllowAdministratorLockout" -Value {{hardening_value}} -Type DWord
+      
+      Write-Output "Administrator account lockout has been configured"
+    requires_reboot: true
+    timeout: 30
+    verify_after: true
+    verify_command: |
+      $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+      $value = (Get-ItemProperty -Path $regPath -Name "AllowAdministratorLockout" -ErrorAction SilentlyContinue).AllowAdministratorLockout
+      if ([int]$value -eq {{hardening_value}}) { exit 0 } else { exit 1 }
+  
+  rollback:
+    enabled: true
+    backup_location: "{{backup_dir}}/WIN-012_{{timestamp}}.reg"
+    backup_command: |
+      # Export the registry key
+      reg export "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" "{{backup_location}}" /y
+    restore_command: |
+      # Restore the registry key
+      reg import "{{backup_location}}"
+    requires_reboot: true
+    timeout: 30
+  
+  logging:
+    log_level: CRITICAL
+    log_category: account_lockout
+    audit_trail: true
+  
+  reporting:
+    report_section: Account Policies
+    priority: critical
+    remediation_complexity: high
+  
+  tags:
+    - account
+    - lockout
+    - administrator
+    - policy
+    - cis
+    - critical
+    - high-risk
+  
+  notes: |
+    CRITICAL SECURITY SETTING - Requires careful planning.
+    
+    CIS classification: Manual (requires manual review and configuration)
+    
+    This setting works with:
+    - WIN-010: Account lockout duration
+    - WIN-011: Account lockout threshold
+    
+    Prerequisites before enabling:
+    1. Create alternate administrator accounts
+    2. Document emergency access procedures
+    3. Test lockout behavior in non-production
+    4. Ensure backup/recovery procedures are in place
+    
+    Best practices:
+    - Rename the built-in Administrator account (see WIN-100)
+    - Disable the built-in Administrator account if not needed (see WIN-101)
+    - Create named administrator accounts for each admin
+    - Use separate accounts for daily work vs admin tasks
+    - Implement multi-factor authentication for admin accounts
+    
+    Emergency access options:
+    1. Physical access with local admin account
+    2. Safe Mode with alternate admin credentials
+    3. Windows Recovery Environment
+    4. Remote management tools (if configured)
+    
+    Monitor Event IDs:
+    - 4740: Account locked out (including Administrator)
+    - 4625: Failed logon attempts
+    - 4723: Attempt to change password
+    
+    Considerations:
+    - Basic level: Disabled (less secure but no lockout risk)
+    - Moderate/Strict: Enabled (more secure but requires planning)
+    
+    Note: This requires a system reboot to take effect.

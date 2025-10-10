@@ -1,0 +1,205 @@
+name: Build SysHardn Binaries
+
+on:
+  push:
+    branches: [ main, dev ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: 
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -v --cov=src/syshardn --cov-report=term-missing
+
+  build-linux:
+    name: Build Linux Binary
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm64
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pytest pytest-cov
+      
+      - name: Build Linux binary
+        run: |
+          chmod +x build.sh
+          ./build.sh
+      
+      - name: Test binary
+        run: |
+          BINARY=$(ls dist/syshardn-*-linux-* | head -1)
+          chmod +x "$BINARY"
+          "$BINARY" --help
+          "$BINARY" list-rules
+      
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: syshardn-linux-${{ matrix.arch }}
+          path: dist/syshardn-*-linux-*
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows Binary
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pytest pytest-cov
+      
+      - name: Build Windows binary
+        run: |
+          .\build.ps1
+      
+      - name: Test binary
+        run: |
+          $binary = Get-ChildItem dist\syshardn-*-windows-*.exe | Select-Object -First 1
+          & $binary.FullName --help
+          & $binary.FullName list-rules
+      
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: syshardn-windows-x86_64
+          path: dist/syshardn-*-windows-*
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Display structure
+        run: ls -R artifacts
+      
+      - name: Create checksums
+        run: |
+          cd artifacts
+          for dir in */; do
+            cd "$dir"
+            for file in *; do
+              if [ -f "$file" ] && [[ "$file" != *.sha256 ]]; then
+                sha256sum "$file" > "${file}.sha256"
+              fi
+            done
+            cd ..
+          done
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## SysHardn Release ${{ github.ref_name }}
+            
+            ### Downloads
+            
+            - **Ubuntu 22.04 LTS (x86_64, tarball):** `syshardn-v*-linux-x86_64.tar.gz`
+            - **Ubuntu 22.04 LTS (arm64/aarch64, tarball):** `syshardn-v*-linux-aarch64.tar.gz`
+            - **Windows Server 2022 (x86_64, zip + exe):** `syshardn-v*-windows-x64.zip`, `syshardn-v*-windows-x64.exe`
+            
+            ### Supported Platforms
+            
+            - Windows 10 and Windows 11 (x86_64)
+            - Ubuntu 20.04 LTS and newer (x86_64/arm64)
+            - CentOS 7 and newer (x86_64)
+            
+            ### Installation
+            
+            #### Linux
+            ```bash
+            # Download the tarball for your architecture
+            tar -xzf syshardn-v*-linux-<arch>.tar.gz
+            chmod +x syshardn-v*-linux-<arch>
+            ./syshardn-v*-linux-<arch> --help
+            ```
+            
+            #### Windows
+            ```powershell
+            # Download and extract the zip package
+            Expand-Archive -Path .\syshardn-v*-windows-x64.zip -DestinationPath .\syshardn
+            .\syshardn\syshardn-v*-windows-x64.exe --help
+            ```
+            
+            ### Verification
+            
+            Verify the download using SHA256 checksums (*.sha256 files included).
+            
+            ### Quick Start
+            
+            ```bash
+            # List available rules
+            ./syshardn list-rules
+            
+            # Check compliance (read-only)
+            sudo ./syshardn check --level basic --dry-run
+            
+            # Generate report
+            sudo ./syshardn report --format html
+            ```
+            
+            For full documentation, see [README.md](https://github.com/${{ github.repository }})
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

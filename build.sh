@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 PROJECT_NAME="syshardn"
-VERSION=$(grep "version=" setup.py | cut -d'"' -f2)
+VERSION=$(grep '^version' pyproject.toml | cut -d'"' -f2 || echo "0.1.0")
 PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 

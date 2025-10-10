@@ -11,7 +11,11 @@ $Yellow = "Yellow"
 $Blue = "Cyan"
 
 $ProjectName = "syshardn"
-$Version = (Select-String -Path "setup.py" -Pattern 'version="([^"]+)"').Matches.Groups[1].Value
+$Version = if (Test-Path "pyproject.toml") {
+    (Select-String -Path "pyproject.toml" -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+} else {
+    "0.1.0"
+}
 $Platform = "windows"
 $Arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
 

@@ -1,0 +1,103 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-401
+  category: User Accounts
+  subcategory: Root Account
+  description: Ensure root is the only UID 0 account
+  severity: high
+  
+  audit:
+    cis_reference: 5.4.2.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Any account with UID 0 has superuser privileges on the system. This access must be limited to only the default root account.
+    impact: Only the root account will have UID 0. Any other accounts with UID 0 will need to be removed or changed.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: "root"
+    moderate:
+      enabled: true
+      value: "root"
+    strict:
+      enabled: true
+      value: "root"
+
+check:
+  type: command
+  command: |
+    awk -F: '($3 == 0) { print $1 }' /etc/passwd | tr '\n' ',' | sed 's/,$//'
+  expected:
+    type: string
+    operator: "=="
+    value: "root"
+  timeout: 10
+  retry: 1
+  retry_delay: 1
+
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    # List all UID 0 accounts except root
+    for user in $(awk -F: '($3 == 0 && $1 != "root") { print $1 }' /etc/passwd); do
+      echo "WARNING: Found UID 0 account: $user"
+      echo "Manual intervention required to change or remove this account"
+      exit 1
+    done
+    echo "Only root has UID 0 - compliant"
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    uid0_users=$(awk -F: '($3 == 0) { print $1 }' /etc/passwd)
+    if [ "$uid0_users" = "root" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+
+rollback:
+  enabled: false
+  backup_location: "{{backup_dir}}/LNX-401_{{timestamp}}.backup"
+
+logging:
+  log_level: INFO
+  log_category: user_account_security
+  audit_trail: true
+
+reporting:
+  report_section: User Accounts and Environment
+  priority: high
+  remediation_complexity: high
+
+tags:
+  - user_accounts
+  - root
+  - uid
+  - cis
+
+notes: |
+  This rule checks that only the root account has UID 0.
+  Any other accounts with UID 0 represent a serious security risk.
+  Manual intervention is required to remediate non-compliant systems.

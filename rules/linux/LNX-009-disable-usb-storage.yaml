@@ -41,109 +41,109 @@ rule:
       enabled: true
       value: disabled
   
-  check:
-    type: command
-    command: |
-      if lsmod | grep -q "^usb_storage"; then
-        echo "loaded"
-        exit 1
-      fi
+check:
+  type: command
+  command: |
+    if lsmod | grep -q "^usb_storage"; then
+      echo "loaded"
+      exit 1
+    fi
       
-      if modprobe -n -v usb_storage 2>&1 | grep -qv "install /bin/true"; then
-        echo "available"
-        exit 1
-      fi
+    if modprobe -n -v usb_storage 2>&1 | grep -qv "install /bin/true"; then
+      echo "available"
+      exit 1
+    fi
       
-      if grep -Rq "^install usb-storage /bin/true" /etc/modprobe.d/; then
-        echo "disabled"
-        exit 0
-      else
-        echo "not_disabled"
-        exit 1
-      fi
-    expected:
-      type: string
-      operator: "=="
-      value: "{{hardening_value}}"
-    timeout: 30
-    retry: 2
-    retry_delay: 3
+    if grep -Rq "^install usb-storage /bin/true" /etc/modprobe.d/; then
+      echo "disabled"
+      exit 0
+    else
+      echo "not_disabled"
+      exit 1
+    fi
+  expected:
+    type: string
+    operator: "=="
+    value: "{{hardening_value}}"
+  timeout: 30
+  retry: 2
+  retry_delay: 3
   
-  remediation:
-    type: command
-    prerequisites:
-      - root_access
-    backup_before: true
-    warning: |
-      WARNING: This will disable all USB storage devices. Ensure you have alternative access methods.
-    confirmation_required: true
-    command: |
-      echo "install usb-storage /bin/true" > /etc/modprobe.d/usb-storage.conf
-      echo "blacklist usb-storage" >> /etc/modprobe.d/usb-storage.conf
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  warning: |
+    WARNING: This will disable all USB storage devices. Ensure you have alternative access methods.
+  confirmation_required: true
+  command: |
+    echo "install usb-storage /bin/true" > /etc/modprobe.d/usb-storage.conf
+    echo "blacklist usb-storage" >> /etc/modprobe.d/usb-storage.conf
       
-      if lsmod | grep -q "^usb_storage"; then
-        rmmod usb_storage 2>/dev/null || true
-      fi
+    if lsmod | grep -q "^usb_storage"; then
+      rmmod usb_storage 2>/dev/null || true
+    fi
       
-      if command -v update-initramfs >/dev/null 2>&1; then
-        update-initramfs -u
-      elif command -v dracut >/dev/null 2>&1; then
-        dracut -f
-      fi
-    requires_reboot: false
-    timeout: 60
-    verify_after: true
-    verify_command: |
-      if grep -Rq "^install usb-storage /bin/true" /etc/modprobe.d/ && \
-         ! lsmod | grep -q "^usb_storage"; then
-        exit 0
-      else
-        exit 1
-      fi
+    if command -v update-initramfs >/dev/null 2>&1; then
+      update-initramfs -u
+    elif command -v dracut >/dev/null 2>&1; then
+      dracut -f
+    fi
+  requires_reboot: false
+  timeout: 60
+  verify_after: true
+  verify_command: |
+    if grep -Rq "^install usb-storage /bin/true" /etc/modprobe.d/ && \
+       ! lsmod | grep -q "^usb_storage"; then
+      exit 0
+    else
+      exit 1
+    fi
   
-  rollback:
-    enabled: true
-    backup_location: "{{backup_dir}}/LNX-009_{{timestamp}}.backup"
-    backup_command: |
-      if [ -f /etc/modprobe.d/usb-storage.conf ]; then
-        cp /etc/modprobe.d/usb-storage.conf "{{backup_location}}"
-      else
-        touch "{{backup_location}}"
-      fi
-    restore_command: |
-      if [ -s "{{backup_location}}" ]; then
-        cp "{{backup_location}}" /etc/modprobe.d/usb-storage.conf
-      else
-        rm -f /etc/modprobe.d/usb-storage.conf
-      fi
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-009_{{timestamp}}.backup"
+  backup_command: |
+    if [ -f /etc/modprobe.d/usb-storage.conf ]; then
+      cp /etc/modprobe.d/usb-storage.conf "{{backup_location}}"
+    else
+      touch "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -s "{{backup_location}}" ]; then
+      cp "{{backup_location}}" /etc/modprobe.d/usb-storage.conf
+    else
+      rm -f /etc/modprobe.d/usb-storage.conf
+    fi
       
-      if command -v update-initramfs >/dev/null 2>&1; then
-        update-initramfs -u
-      elif command -v dracut >/dev/null 2>&1; then
-        dracut -f
-      fi
-    requires_reboot: false
-    timeout: 60
+    if command -v update-initramfs >/dev/null 2>&1; then
+      update-initramfs -u
+    elif command -v dracut >/dev/null 2>&1; then
+      dracut -f
+    fi
+  requires_reboot: false
+  timeout: 60
   
-  logging:
-    log_level: WARNING
-    log_category: filesystem_security
-    audit_trail: true
+logging:
+  log_level: WARNING
+  log_category: filesystem_security
+  audit_trail: true
   
-  reporting:
-    report_section: Filesystem Configuration
-    priority: high
-    remediation_complexity: low
+reporting:
+  report_section: Filesystem Configuration
+  priority: high
+  remediation_complexity: low
   
-  tags:
-    - filesystem
-    - kernel
-    - modules
-    - usb-storage
-    - data-exfiltration
-    - cis
+tags:
+  - filesystem
+  - kernel
+  - modules
+  - usb-storage
+  - data-exfiltration
+  - cis
   
-  notes: |
-    This rule disables USB storage to prevent data exfiltration.
-    Consider the operational impact before applying this rule.
-    Alternative: Use USB storage authorization tools instead of complete disable.
+notes: |
+  This rule disables USB storage to prevent data exfiltration.
+  Consider the operational impact before applying this rule.
+  Alternative: Use USB storage authorization tools instead of complete disable.

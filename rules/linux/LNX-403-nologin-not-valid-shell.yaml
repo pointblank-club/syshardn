@@ -1,0 +1,112 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-403
+  category: User Accounts
+  subcategory: Default Environment
+  description: Ensure nologin is not listed in /etc/shells
+  severity: low
+  
+  audit:
+    cis_reference: 5.4.3.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+    rationale: The /etc/shells file lists valid login shells. The nologin shell should not be listed as a valid shell as it's designed to prevent login.
+    impact: nologin will not be considered a valid shell. This helps prevent misuse of the nologin shell.
+  
+  hardening_levels:
+    basic:
+      enabled: false
+      value: "not_present"
+    moderate:
+      enabled: true
+      value: "not_present"
+    strict:
+      enabled: true
+      value: "not_present"
+
+check:
+  type: command
+  command: |
+    if grep -q "nologin" /etc/shells 2>/dev/null; then
+      echo "present"
+    else
+      echo "not_present"
+    fi
+  expected:
+    type: string
+    operator: "=="
+    value: "not_present"
+  timeout: 10
+  retry: 1
+  retry_delay: 1
+
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    # Backup /etc/shells
+    cp /etc/shells /etc/shells.backup.$(date +%Y%m%d_%H%M%S)
+    
+    # Remove nologin from /etc/shells
+    sed -i '/nologin/d' /etc/shells
+    
+    echo "Removed nologin from /etc/shells"
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    if grep -q "nologin" /etc/shells; then
+      exit 1
+    else
+      exit 0
+    fi
+
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-403_{{timestamp}}.backup"
+  backup_command: |
+    cp /etc/shells "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      cp "{{backup_location}}" /etc/shells
+    fi
+  requires_reboot: false
+  timeout: 30
+
+logging:
+  log_level: INFO
+  log_category: user_account_security
+  audit_trail: true
+
+reporting:
+  report_section: User Accounts and Environment
+  priority: low
+  remediation_complexity: low
+
+tags:
+  - user_accounts
+  - shells
+  - nologin
+  - cis
+
+notes: |
+  This rule ensures nologin is not listed as a valid shell in /etc/shells.
+  The nologin shell is designed to prevent login and should not be listed as valid.

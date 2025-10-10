@@ -22,7 +22,7 @@ rule:
   severity: medium
   
   audit:
-    cis_reference: 1.1.1.2
+    cis_reference: 1.1.1.2+
     compliance_frameworks:
       - NIST SP 800-53
       - ISO 27001
@@ -40,99 +40,99 @@ rule:
     strict:
       enabled: true
       value: disabled
-  
-  check:
-    type: command
-    command: |
-      if lsmod | grep -q "^freevxfs"; then
-        echo "loaded"
-        exit 1
-      fi
-      
-      if modprobe -n -v freevxfs 2>&1 | grep -qv "install /bin/true"; then
-        echo "available"
-        exit 1
-      fi
-      
-      if grep -Rq "^install freevxfs /bin/true" /etc/modprobe.d/; then
-        echo "disabled"
-        exit 0
-      else
-        echo "not_disabled"
-        exit 1
-      fi
-    expected:
-      type: string
-      operator: "=="
-      value: "disabled"
-    timeout: 30
-    retry: 2
-    retry_delay: 3
-  
-  remediation:
-    type: command
-    prerequisites:
-      - root_access
-    backup_before: true
-    command: |
-      echo "install freevxfs /bin/true" > /etc/modprobe.d/freevxfs.conf
-      echo "blacklist freevxfs" >> /etc/modprobe.d/freevxfs.conf
-      
-      if lsmod | grep -q "^freevxfs"; then
-        rmmod freevxfs 2>/dev/null || true
-      fi
-      
-      if command -v update-initramfs >/dev/null 2>&1; then
-        update-initramfs -u
-      elif command -v dracut >/dev/null 2>&1; then
-        dracut -f
-      fi
-    requires_reboot: false
-    timeout: 60
-    verify_after: true
-    verify_command: |
-      if grep -Rq "^install freevxfs /bin/true" /etc/modprobe.d/ && \
-         ! lsmod | grep -q "^freevxfs"; then
-        exit 0
-      else
-        exit 1
-      fi
-  
-  rollback:
-    enabled: true
-    backup_location: "{{backup_dir}}/LNX-002_{{timestamp}}.backup"
-    backup_command: |
-      if [ -f /etc/modprobe.d/freevxfs.conf ]; then
-        cp /etc/modprobe.d/freevxfs.conf "{{backup_location}}"
-      else
-        touch "{{backup_location}}"
-      fi
-    restore_command: |
-      if [ -s "{{backup_location}}" ]; then
-        cp "{{backup_location}}" /etc/modprobe.d/freevxfs.conf
-      else
-        rm -f /etc/modprobe.d/freevxfs.conf
-      fi
-      
-      if command -v update-initramfs >/dev/null 2>&1; then
-        update-initramfs -u
-      elif command -v dracut >/dev/null 2>&1; then
-        dracut -f
-      fi
-    requires_reboot: false
-    timeout: 60
-  
-  logging:
-    log_level: INFO
-    log_category: filesystem_security
-    audit_trail: true
-  
-  reporting:
-    report_section: Filesystem Configuration
-    priority: medium
-    remediation_complexity: low
-  
-  tags:
+
+check:
+  type: command
+  command: |
+    if lsmod | grep -q "^freevxfs"; then
+      echo "loaded"
+      exit 1
+    fi
+    
+    if modprobe -n -v freevxfs 2>&1 | grep -qv "install /bin/true"; then
+      echo "available"
+      exit 1
+    fi
+    
+    if grep -Rq "^install freevxfs /bin/true" /etc/modprobe.d/; then
+      echo "disabled"
+      exit 0
+    else
+      echo "not_disabled"
+      exit 1
+    fi
+  expected:
+    type: string
+    operator: "=="
+    value: "disabled"
+  timeout: 30
+  retry: 2
+  retry_delay: 3
+
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    echo "install freevxfs /bin/true" > /etc/modprobe.d/freevxfs.conf
+    echo "blacklist freevxfs" >> /etc/modprobe.d/freevxfs.conf
+    
+    if lsmod | grep -q "^freevxfs"; then
+      rmmod freevxfs 2>/dev/null || true
+    fi
+    
+    if command -v update-initramfs >/dev/null 2>&1; then
+      update-initramfs -u
+    elif command -v dracut >/dev/null 2>&1; then
+      dracut -f
+    fi
+  requires_reboot: false
+  timeout: 60
+  verify_after: true
+  verify_command: |
+    if grep -Rq "^install freevxfs /bin/true" /etc/modprobe.d/ && \
+       ! lsmod | grep -q "^freevxfs"; then
+      exit 0
+    else
+      exit 1
+    fi
+
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-002_{{timestamp}}.backup"
+  backup_command: |
+    if [ -f /etc/modprobe.d/freevxfs.conf ]; then
+      cp /etc/modprobe.d/freevxfs.conf "{{backup_location}}"
+    else
+      touch "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -s "{{backup_location}}" ]; then
+      cp "{{backup_location}}" /etc/modprobe.d/freevxfs.conf
+    else
+      rm -f /etc/modprobe.d/freevxfs.conf
+    fi
+    
+    if command -v update-initramfs >/dev/null 2>&1; then
+      update-initramfs -u
+    elif command -v dracut >/dev/null 2>&1; then
+      dracut -f
+    fi
+  requires_reboot: false
+  timeout: 60
+
+logging:
+  log_level: INFO
+  log_category: filesystem_security
+  audit_trail: true
+
+reporting:
+  report_section: Filesystem Configuration
+  priority: medium
+  remediation_complexity: low
+
+tags:
     - filesystem
     - kernel
     - modules

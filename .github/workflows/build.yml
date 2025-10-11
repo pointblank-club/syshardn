@@ -39,35 +39,68 @@ jobs:
         include:
           - runner: ubuntu-22.04
             arch: x86_64
-          - runner: ubuntu-22.04-arm64
+            emulated: false
+          - runner: ubuntu-22.04
             arch: arm64
+            emulated: true
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
       - name: Set up Python
+        if: ${{ matrix.emulated == false }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       
       - name: Install dependencies
+        if: ${{ matrix.emulated == false }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller pytest pytest-cov
       
       - name: Build Linux binary
+        if: ${{ matrix.emulated == false }}
         run: |
           chmod +x build.sh
           ./build.sh
       
       - name: Test binary
+        if: ${{ matrix.emulated == false }}
         run: |
           BINARY=$(ls dist/syshardn-*-linux-* | head -1)
           chmod +x "$BINARY"
           "$BINARY" --help
           "$BINARY" list-rules
+      
+      - name: Install QEMU for Docker emulation
+        if: ${{ matrix.emulated == true }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          docker run --rm --privileged tonistiigi/binfmt --install all
+
+      - name: Build Linux binary (arm64 via Docker)
+        if: ${{ matrix.emulated == true }}
+        env:
+          DOCKER_CLI_EXPERIMENTAL: enabled
+        run: |
+          docker run --rm \
+            --platform linux/arm64/v8 \
+            -v "$PWD":/workspace \
+            -w /workspace \
+            python:3.12-slim bash -c "
+              python -m pip install --upgrade pip &&
+              pip install -r requirements.txt pyinstaller pytest pytest-cov &&
+              chmod +x build.sh &&
+              ./build.sh
+            "
+
+      - name: Fix permissions (arm64)
+        if: ${{ matrix.emulated == true }}
+        run: sudo chown -R $USER:$USER dist
       
       - name: Upload Linux binary
         uses: actions/upload-artifact@v4
@@ -157,7 +190,7 @@ jobs:
             ### Downloads
             
             - **Ubuntu 22.04 LTS (x86_64, tarball):** `syshardn-v*-linux-x86_64.tar.gz`
-            - **Ubuntu 22.04 LTS (arm64/aarch64, tarball):** `syshardn-v*-linux-aarch64.tar.gz`
+            - **Ubuntu 22.04 LTS (arm64/aarch64 via QEMU, tarball):** `syshardn-v*-linux-aarch64.tar.gz`
             - **Windows Server 2022 (x86_64, zip + exe):** `syshardn-v*-windows-x64.zip`, `syshardn-v*-windows-x64.exe`
             
             ### Supported Platforms

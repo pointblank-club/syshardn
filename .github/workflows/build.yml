@@ -54,7 +54,13 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Install dependencies
+      - name: Install system dependencies
+        if: ${{ matrix.emulated == false }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils
+
+      - name: Install Python dependencies
         if: ${{ matrix.emulated == false }}
         run: |
           python -m pip install --upgrade pip
@@ -92,6 +98,8 @@ jobs:
             -v "$PWD":/workspace \
             -w /workspace \
             python:3.12-slim bash -c "
+              apt-get update &&
+              apt-get install -y binutils &&
               python -m pip install --upgrade pip &&
               pip install -r requirements.txt pyinstaller pytest pytest-cov &&
               chmod +x build.sh &&

@@ -163,7 +163,28 @@ class WindowsExecutor(BaseExecutor):
                 }
 
             if remediation.get("verify_after", False):
-                if self.verify_check(rule, hardening_level):
+                import time
+                time.sleep(3)
+                verify_command = remediation.get("verify_command")
+                
+                if verify_command:
+                    verify_cmd = self.substitute_variables(verify_command, variables)
+                    verify_result = self.execute_command(verify_cmd, timeout)
+                    
+                    if self.logger:
+                        self.logger.debug(f"Verify command result for {rule_id}: returncode={verify_result['returncode']}, stdout={verify_result['stdout']}, stderr={verify_result['stderr']}")
+
+                    is_verified = verify_result["returncode"] == 0
+                    verify_msg = verify_result.get("stderr", "") or verify_result.get("stdout", "")
+                else:
+                    verify_result = self.check_rule(rule, hardening_level)
+                    is_verified = verify_result.get("status") == "pass"
+                    verify_msg = verify_result.get("message", "")
+                    
+                    if self.logger:
+                        self.logger.debug(f"Check rule result for {rule_id}: {verify_result}")
+                
+                if is_verified:
                     return {
                         "rule_id": rule_id,
                         "status": "success",
@@ -174,7 +195,7 @@ class WindowsExecutor(BaseExecutor):
                     return {
                         "rule_id": rule_id,
                         "status": "fail",
-                        "message": "Applied but verification failed",
+                        "message": f"Applied but verification failed: {verify_msg}",
                     }
             
             return {

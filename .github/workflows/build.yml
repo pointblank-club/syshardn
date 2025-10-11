@@ -35,14 +35,7 @@ jobs:
     name: Build Linux Binary
     needs: test
     strategy:
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            arch: x86_64
-            emulated: false
-          - runner: ubuntu-22.04
-            arch: arm64
-            emulated: true
+      matrix: ${{ fromJSON(github.ref == 'refs/heads/main' && '[{"runner":"ubuntu-22.04","arch":"x86_64","emulated":false},{"runner":"ubuntu-22.04","arch":"arm64","emulated":true}]' || '[{"runner":"ubuntu-22.04","arch":"x86_64","emulated":false}]') }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
@@ -152,6 +145,70 @@ jobs:
           name: syshardn-windows-x86_64
           path: dist/syshardn-*-windows-*
           if-no-files-found: error
+
+  create-dev-release:
+    name: Create Dev Pre-Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Display structure
+        run: ls -R artifacts
+      
+      - name: Create checksums
+        run: |
+          cd artifacts
+          for dir in */; do
+            cd "$dir"
+            for file in *; do
+              if [ -f "$file" ] && [[ "$file" != *.sha256 ]]; then
+                sha256sum "$file" > "${file}.sha256"
+              fi
+            done
+            cd ..
+          done
+      
+      - name: Delete previous dev release
+        continue-on-error: true
+        run: |
+          gh release delete dev-latest --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create Dev Pre-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Development Build (Latest)"
+          tag_name: dev-latest
+          files: artifacts/**/*
+          draft: false
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            ##  Development Build - Latest from `dev` branch
+            
+            This is an automated pre-release build from the development branch.
+            - Not recommended for production use
+            - May contain experimental features or bugs
+            - Build date: ${{ github.event.head_commit.timestamp }}
+            - Commit: ${{ github.sha }}
+            
+            ### Downloads
+            See attached binaries for Linux (x86_64, arm64) and Windows (x86_64).
+            
+            For stable releases, see: https://github.com/${{ github.repository }}/releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   create-release:
     name: Create Release

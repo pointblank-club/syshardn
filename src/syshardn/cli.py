@@ -159,22 +159,30 @@ def _generate_pdf_report(results: List[dict], output: str, level: str, reporter:
 
     elements.append(Paragraph("<b>Detailed Results</b>", styles['Heading2']))
     elements.append(Spacer(1, 0.1 * inch))
+
+    cell_style = ParagraphStyle(
+        'CellText',
+        parent=styles['Normal'],
+        fontSize=7,
+        leading=9,
+        wordWrap='CJK'
+    )
     
-    results_data = [['Rule ID', 'Category', 'Severity', 'Status', 'Description']]
+    results_data: List[List] = [['Rule ID', 'Category', 'Severity', 'Status', 'Description']]
     for result in results:
         rule_id = result.get('rule_id', 'N/A')
         status = result.get('status', 'unknown').upper()
 
         category = result.get('category', 'N/A')
         severity = result.get('severity', 'N/A')
-        description = result.get('description', result.get('message', 'No description'))[:60]
-        
+        description = result.get('description', result.get('message', 'No description'))
+
         results_data.append([
-            rule_id,
-            category,
-            severity.upper() if severity != 'N/A' else 'N/A',
-            status,
-            description
+            Paragraph(rule_id, cell_style),
+            Paragraph(category, cell_style),
+            Paragraph(severity.upper() if severity != 'N/A' else 'N/A', cell_style),
+            Paragraph(status, cell_style),
+            Paragraph(description, cell_style)
         ])
     
     results_table = Table(results_data, colWidths=[0.9*inch, 1.3*inch, 0.8*inch, 0.7*inch, 2.8*inch])
@@ -185,9 +193,10 @@ def _generate_pdf_report(results: List[dict], output: str, level: str, reporter:
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
         ('VALIGN', (0, 0), (-1, -1), 'TOP')
     ]))

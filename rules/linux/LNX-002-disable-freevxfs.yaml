@@ -133,12 +133,12 @@ reporting:
   remediation_complexity: low
 
 tags:
-    - filesystem
-    - kernel
-    - modules
-    - freevxfs
-    - cis
+  - filesystem
+  - kernel
+  - modules
+  - freevxfs
+  - cis
   
-  notes: |
-    This rule disables the freevxfs kernel module to reduce attack surface.
-    Part of a series of filesystem module hardening rules.
+notes: |
+  This rule disables the freevxfs kernel module to reduce attack surface.
+  Part of a series of filesystem module hardening rules.

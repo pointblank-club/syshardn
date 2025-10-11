@@ -38,24 +38,7 @@ rule:
   
 check:
   type: command
-  command: |
-    $ErrorActionPreference = 'Stop'
-    try {
-        $tempFile = [System.IO.Path]::GetTempFileName()
-        $null = secedit /export /cfg $tempFile /areas SECURITYPOLICY /quiet
-        Start-Sleep -Milliseconds 500
-        $content = Get-Content $tempFile -ErrorAction Stop
-        Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
-        $line = $content | Select-String "^LockoutDuration"
-        if ($line) {
-            $value = $line.ToString().Split('=')[1].Trim()
-            Write-Output $value
-        } else {
-            Write-Output "0"
-        }
-    } catch {
-        Write-Output "0"
-    }
+  command: '$ErrorActionPreference = ''Stop''; try { $tempFile = [System.IO.Path]::GetTempFileName(); $null = secedit /export /cfg $tempFile /areas SECURITYPOLICY /quiet; Start-Sleep -Milliseconds 500; $content = Get-Content $tempFile -ErrorAction Stop; Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue; $line = $content | Select-String "^LockoutDuration"; if ($line) { $value = $line.ToString().Split(''='')[1].Trim(); Write-Output $value } else { Write-Output "0" } } catch { Write-Output "0" }'
   expected:
     type: number
     operator: '>='
@@ -82,32 +65,7 @@ remediation:
   requires_reboot: false
   timeout: 30
   verify_after: true
-  verify_command: |
-    $ErrorActionPreference = 'Stop'
-    try {
-        $tempFile = [System.IO.Path]::GetTempFileName()
-        $null = secedit /export /cfg $tempFile /areas SECURITYPOLICY /quiet
-        Start-Sleep -Seconds 1
-        $content = Get-Content $tempFile -ErrorAction Stop
-        Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
-        $line = $content | Select-String "^LockoutDuration"
-        if ($line) {
-            $value = [int]($line.ToString().Split('=')[1].Trim())
-            if ($value -ge {{hardening_value}}) { 
-                Write-Output "Verified: LockoutDuration = $value"
-                exit 0 
-            } else { 
-                Write-Error "Current value $value is less than required {{hardening_value}}"
-                exit 1 
-            }
-        } else {
-            Write-Error "LockoutDuration not found in security policy"
-            exit 1
-        }
-    } catch {
-        Write-Error "Verification failed: $_"
-        exit 1
-    }
+  verify_command: '$ErrorActionPreference = ''Stop''; try { $tempFile = [System.IO.Path]::GetTempFileName(); $null = secedit /export /cfg $tempFile /areas SECURITYPOLICY /quiet; Start-Sleep -Seconds 1; $content = Get-Content $tempFile -ErrorAction Stop; Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue; $line = $content | Select-String "^LockoutDuration"; if ($line) { $value = [int]($line.ToString().Split(''='')[1].Trim()); if ($value -ge {{hardening_value}}) { Write-Output "Verified: LockoutDuration = $value"; exit 0 } else { Write-Error "Current value $value is less than required {{hardening_value}}"; exit 1 } } else { Write-Error "LockoutDuration not found in security policy"; exit 1 } } catch { Write-Error "Verification failed: $_"; exit 1 }'
   
 rollback:
   enabled: true

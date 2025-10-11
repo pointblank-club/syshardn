@@ -31,58 +31,65 @@ jobs:
         run: |
           python -m pytest tests/ -v --cov=src/syshardn --cov-report=term-missing
 
-  build-linux:
-    name: Build Linux Binary
+  build-linux-x86:
+    name: Build Linux Binary (x86_64)
     needs: test
-    strategy:
-      matrix: ${{ fromJSON(github.ref == 'refs/heads/main' && '[{"runner":"ubuntu-22.04","arch":"x86_64","emulated":false},{"runner":"ubuntu-22.04","arch":"arm64","emulated":true}]' || '[{"runner":"ubuntu-22.04","arch":"x86_64","emulated":false}]') }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
       - name: Set up Python
-        if: ${{ matrix.emulated == false }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       
       - name: Install system dependencies
-        if: ${{ matrix.emulated == false }}
         run: |
           sudo apt-get update
           sudo apt-get install -y binutils
 
       - name: Install Python dependencies
-        if: ${{ matrix.emulated == false }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller pytest pytest-cov
       
       - name: Build Linux binary
-        if: ${{ matrix.emulated == false }}
         run: |
           chmod +x build.sh
           ./build.sh
       
       - name: Test binary
-        if: ${{ matrix.emulated == false }}
         run: |
           BINARY=$(ls dist/syshardn-*-linux-* | head -1)
           chmod +x "$BINARY"
           "$BINARY" --help
           "$BINARY" list-rules
       
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: syshardn-linux-x86_64
+          path: dist/syshardn-*-linux-*
+          if-no-files-found: error
+
+  build-linux-arm64:
+    name: Build Linux Binary (arm64)
+    needs: test
+    runs-on: ubuntu-22.04
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Install QEMU for Docker emulation
-        if: ${{ matrix.emulated == true }}
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-user-static binfmt-support
           docker run --rm --privileged tonistiigi/binfmt --install all
 
       - name: Build Linux binary (arm64 via Docker)
-        if: ${{ matrix.emulated == true }}
         env:
           DOCKER_CLI_EXPERIMENTAL: enabled
         run: |
@@ -100,13 +107,12 @@ jobs:
             "
 
       - name: Fix permissions (arm64)
-        if: ${{ matrix.emulated == true }}
         run: sudo chown -R $USER:$USER dist
-      
-      - name: Upload Linux binary
+
+      - name: Upload Linux binary (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: syshardn-linux-${{ matrix.arch }}
+          name: syshardn-linux-arm64
           path: dist/syshardn-*-linux-*
           if-no-files-found: error
 
@@ -148,7 +154,7 @@ jobs:
 
   create-dev-release:
     name: Create Dev Pre-Release
-    needs: [build-linux, build-windows]
+    needs: [build-linux-x86, build-windows]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
     permissions:
@@ -204,7 +210,7 @@ jobs:
             - Commit: ${{ github.sha }}
             
             ### Downloads
-            See attached binaries for Linux (x86_64, arm64) and Windows (x86_64).
+            See attached binaries for Linux (x86_64) and Windows (x86_64).
             
             For stable releases, see: https://github.com/${{ github.repository }}/releases
         env:
@@ -212,7 +218,7 @@ jobs:
 
   create-release:
     name: Create Release
-    needs: [build-linux, build-windows]
+    needs: [build-linux-x86, build-linux-arm64, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:

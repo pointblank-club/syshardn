@@ -40,15 +40,27 @@ rule:
   
 check:
   type: command
-  command: '$lockoutThreshold = (net accounts | Select-String "Lockout threshold"
-    | ForEach-Object { ($_ -split ":")[1].Trim() -replace ''\D+'','''' })
-
-    Write-Output $lockoutThreshold
-
-    '
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        $null = secedit /export /cfg $tempFile /areas SECURITYPOLICY /quiet
+        Start-Sleep -Milliseconds 500
+        $content = Get-Content $tempFile -ErrorAction Stop
+        Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+        $line = $content | Select-String "^LockoutBadCount"
+        if ($line) {
+            $value = $line.ToString().Split('=')[1].Trim()
+            Write-Output $value
+        } else {
+            Write-Output "0"
+        }
+    } catch {
+        Write-Output "0"
+    }
   expected:
     type: number
-    operator: <=
+    operator: '<='
     value: '{{hardening_value}}'
   timeout: 30
   retry: 2
@@ -72,15 +84,32 @@ remediation:
   requires_reboot: false
   timeout: 30
   verify_after: true
-  verify_command: '$lockoutThreshold = (net accounts | Select-String "Lockout threshold"
-    | ForEach-Object { ($_ -split ":")[1].Trim() -replace ''\D+'','''' })
-
-    $threshold = [int]$lockoutThreshold
-
-    if ($threshold -le {{hardening_value}} -and $threshold -ne 0) { exit 0 } else
-    { exit 1 }
-
-    '
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        $null = secedit /export /cfg $tempFile /areas SECURITYPOLICY /quiet
+        Start-Sleep -Seconds 1
+        $content = Get-Content $tempFile -ErrorAction Stop
+        Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+        $line = $content | Select-String "^LockoutBadCount"
+        if ($line) {
+            $value = [int]($line.ToString().Split('=')[1].Trim())
+            if ($value -le {{hardening_value}} -and $value -ne 0) { 
+                Write-Output "Verified: LockoutBadCount = $value"
+                exit 0 
+            } else { 
+                Write-Error "Current value $value does not meet requirement (should be <= {{hardening_value}} and not 0)"
+                exit 1 
+            }
+        } else {
+            Write-Error "LockoutBadCount not found in security policy"
+            exit 1
+        }
+    } catch {
+        Write-Error "Verification failed: $_"
+        exit 1
+    }
   
 rollback:
   enabled: true

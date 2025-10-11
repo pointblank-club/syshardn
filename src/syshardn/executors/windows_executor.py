@@ -176,6 +176,11 @@ class WindowsExecutor(BaseExecutor):
 
                     is_verified = verify_result["returncode"] == 0
                     verify_msg = verify_result.get("stderr", "") or verify_result.get("stdout", "")
+                    if not is_verified and not verify_msg:
+                        check_result = self.check_rule(rule, hardening_level)
+                        verify_msg = check_result.get("message", "Verification failed with no output")
+                        if self.logger:
+                            self.logger.debug(f"Verify command failed, check_rule result: {check_result}")
                 else:
                     verify_result = self.check_rule(rule, hardening_level)
                     is_verified = verify_result.get("status") == "pass"

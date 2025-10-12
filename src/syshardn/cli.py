@@ -357,6 +357,8 @@ def check(
             
             try:
                 result = executor.check_rule(rule, level)
+                # Add description to result for JSON reports
+                result["description"] = description
                 results.append(result)
                 if logger:
                     logger.info(f"Checked rule {rule_id}: {result['status']}")
@@ -367,6 +369,7 @@ def check(
                     "rule_id": rule_id,
                     "status": "error",
                     "message": str(e),
+                    "description": description,
                 })
             
             progress.advance(task)
@@ -659,8 +662,13 @@ def report(ctx, format: str, output: str, level: str):
     is_flag=True,
     help="Rollback the latest backup for specified rule",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Skip confirmation prompts",
+)
 @click.pass_context
-def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, latest: bool):
+def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, latest: bool, force: bool):
     """
     Rollback applied hardening rules using backups.
     
@@ -746,14 +754,18 @@ def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, l
     console.print(f"  Backup file: {selected_backup.name}")
     console.print()
     
-    if not click.confirm(click.style("Do you want to proceed with rollback?", fg="yellow"), default=False):
-        console.print("[yellow]Rollback cancelled[/yellow]")
-        return
-
-    if not _check_privileges():
-        console.print("[yellow]Warning: Rollback typically requires root/admin privileges[/yellow]")
-        if not click.confirm(click.style("Continue anyway?", fg="yellow"), default=False):
+    if not force:
+        if not click.confirm(click.style("Do you want to proceed with rollback?", fg="yellow"), default=False):
+            console.print("[yellow]Rollback cancelled[/yellow]")
             return
+
+        if not _check_privileges():
+            console.print("[yellow]Warning: Rollback typically requires root/admin privileges[/yellow]")
+            if not click.confirm(click.style("Continue anyway?", fg="yellow"), default=False):
+                return
+    else:
+        if not _check_privileges():
+            console.print("[yellow]Warning: Rollback typically requires root/admin privileges[/yellow]")
 
     console.print("\n[bold]Performing rollback...[/bold]\n")
     

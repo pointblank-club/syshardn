@@ -92,9 +92,13 @@ class LinuxExecutor(BaseExecutor):
                         "current_value": None,
                     }
 
-            expected_value = expected.get("value")
-            if expected_value is None:
+            expected_value_template = expected.get("value")
+            if expected_value_template is None:
                 expected_value = hardening_value
+            elif isinstance(expected_value_template, str):
+                expected_value = self.substitute_variables(expected_value_template, variables)
+            else:
+                expected_value = expected_value_template
             
             is_compliant = self._compare_values(
                 current_value,

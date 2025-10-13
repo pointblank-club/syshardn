@@ -55,9 +55,10 @@ class RuleLoader:
                 raise ValueError("Rule missing 'rule' section")
 
             rule_id = rule_data.get("rule", {}).get("id", "unknown")
-            has_check = "check" in rule_data
-            check_has_command = rule_data.get("check", {}).get("command", "") != "" if has_check else False
-            console.print(f"[dim]Loaded {rule_id}: has_check={has_check}, has_command={check_has_command}[/dim]")
+            description = rule_data.get("rule", {}).get("description", "No description")
+            if len(description) > 60:
+                description = description[:57] + "..."
+            console.print(f"[dim]  ✓ {rule_id}[/dim] [cyan]{description}[/cyan]")
 
             rule_data["_file_path"] = str(rule_file)
 

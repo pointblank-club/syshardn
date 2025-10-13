@@ -856,9 +856,14 @@ def _check_privileges() -> bool:
 
 def _display_check_results(results: List[dict], verbose: bool):
     """Display check results in a formatted table."""
+    has_linux_rules = any(result.get("rule_id", "").startswith("LNX") for result in results)
+    
     table = Table(show_header=True, header_style="bold")
     table.add_column("Rule ID", style="cyan")
     table.add_column("Status")
+    if has_linux_rules:
+        table.add_column("Description", style="dim")
+    
     table.add_column("Message")
     
     passed = failed = errors = 0
@@ -867,6 +872,7 @@ def _display_check_results(results: List[dict], verbose: bool):
         status = result["status"]
         rule_id = result.get("rule_id", "Unknown")
         message = result.get("message", "")
+        description = result.get("description", "")
         
         if status == "pass":
             status_str = "[green]✓ PASS[/green]"
@@ -878,8 +884,13 @@ def _display_check_results(results: List[dict], verbose: bool):
             status_str = "[yellow]⚠ ERROR[/yellow]"
             errors += 1
         
+        desc_truncated = description[:50] + "..." if len(description) > 50 else description
+        
         if verbose or status != "pass":
-            table.add_row(rule_id, status_str, message[:80])
+            if has_linux_rules:
+                table.add_row(rule_id, status_str, desc_truncated, message[:80])
+            else:
+                table.add_row(rule_id, status_str, message[:80])
     
     console.print(table)
     console.print(f"\n[bold]Summary:[/bold] {passed} passed, {failed} failed, {errors} errors")

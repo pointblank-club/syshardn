@@ -9,7 +9,7 @@ rule:
   id: WIN-130
   category: Local Policies
   subcategory: Security Options - Network Security
-  description: Ensure 'Network security: Do not store LAN Manager hash value on next password change' is set to 'Enabled'
+  description: "Ensure 'Network security: Do not store LAN Manager hash value on next password change' is set to 'Enabled'"
   severity: high
   
   audit:

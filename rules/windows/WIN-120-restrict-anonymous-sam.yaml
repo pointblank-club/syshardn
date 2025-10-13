@@ -9,7 +9,7 @@ rule:
   id: WIN-120
   category: Local Policies
   subcategory: Security Options - Network Access
-  description: Ensure 'Network access: Do not allow anonymous enumeration of SAM accounts' is set to 'Enabled'
+  description: "Ensure 'Network access: Do not allow anonymous enumeration of SAM accounts' is set to 'Enabled'"
   severity: high
   
   audit:

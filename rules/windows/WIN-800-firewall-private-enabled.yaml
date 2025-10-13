@@ -9,7 +9,7 @@ rule:
   id: WIN-800
   category: Windows Firewall
   subcategory: Private Profile
-  description: Ensure 'Windows Firewall: Private: Firewall state' is set to 'On (recommended)'
+  description: "Ensure 'Windows Firewall: Private: Firewall state' is set to 'On (recommended)'"
   severity: critical
   
   audit:

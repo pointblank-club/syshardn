@@ -9,7 +9,7 @@ rule:
   id: WIN-801
   category: Windows Firewall
   subcategory: Private Profile
-  description: Ensure 'Windows Firewall: Private: Inbound connections' is set to 'Block (default)'
+  description: "Ensure 'Windows Firewall: Private: Inbound connections' is set to 'Block (default)'"
   severity: critical
   
   audit:

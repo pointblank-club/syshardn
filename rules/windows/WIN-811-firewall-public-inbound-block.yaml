@@ -9,7 +9,7 @@ rule:
   id: WIN-811
   category: Windows Firewall
   subcategory: Public Profile
-  description: Ensure 'Windows Firewall: Public: Inbound connections' is set to 'Block (default)'
+  description: "Ensure 'Windows Firewall: Public: Inbound connections' is set to 'Block (default)'"
   severity: critical
   
   audit:

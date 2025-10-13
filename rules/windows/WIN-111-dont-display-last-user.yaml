@@ -9,7 +9,7 @@ rule:
   id: WIN-111
   category: Local Policies
   subcategory: Security Options - Interactive Logon
-  description: Ensure 'Interactive logon: Don't display last signed-in user' is set to 'Enabled'
+  description: "Ensure 'Interactive logon: Don't display last signed-in user' is set to 'Enabled'"
   severity: medium
   
   audit:

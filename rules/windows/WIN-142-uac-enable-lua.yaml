@@ -9,7 +9,7 @@ rule:
   id: WIN-142
   category: Local Policies
   subcategory: User Account Control
-  description: Ensure 'User Account Control: Run all administrators in Admin Approval Mode' is set to 'Enabled'
+  description: "Ensure 'User Account Control: Run all administrators in Admin Approval Mode' is set to 'Enabled'"
   severity: critical
   
   audit:

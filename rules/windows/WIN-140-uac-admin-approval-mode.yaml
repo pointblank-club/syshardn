@@ -9,7 +9,7 @@ rule:
   id: WIN-140
   category: Local Policies
   subcategory: User Account Control
-  description: Ensure 'User Account Control: Admin Approval Mode for the Built-in Administrator account' is set to 'Enabled'
+  description: "Ensure 'User Account Control: Admin Approval Mode for the Built-in Administrator account' is set to 'Enabled'"
   severity: high
   
   audit:

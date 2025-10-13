@@ -9,7 +9,7 @@ rule:
   id: WIN-110
   category: Local Policies
   subcategory: Security Options - Interactive Logon
-  description: Ensure 'Interactive logon: Do not require CTRL+ALT+DEL' is set to 'Disabled'
+  description: "Ensure 'Interactive logon: Do not require CTRL+ALT+DEL' is set to 'Disabled'"
   severity: medium
   
   audit:

@@ -9,7 +9,7 @@ rule:
   id: WIN-810
   category: Windows Firewall
   subcategory: Public Profile
-  description: Ensure 'Windows Firewall: Public: Firewall state' is set to 'On (recommended)'
+  description: "Ensure 'Windows Firewall: Public: Firewall state' is set to 'On (recommended)'"
   severity: critical
   
   audit:

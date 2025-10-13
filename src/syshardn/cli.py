@@ -888,7 +888,7 @@ def _display_check_results(results: List[dict], verbose: bool):
         
         if verbose or status != "pass":
             if has_linux_rules:
-                table.add_row(rule_id, status_str, desc_truncated, message[:80])
+                table.add_row(rule_id, status_str, desc_truncated if description else "-", message[:80])
             else:
                 table.add_row(rule_id, status_str, message[:80])
     

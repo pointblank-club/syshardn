@@ -1,0 +1,141 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-302
+  category: Services
+  subcategory: System Services
+  description: Ensure 'Windows Error Reporting Service (WerSvc)' is set to 'Disabled'
+  severity: medium
+  
+  audit:
+    cis_reference: 5.3
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Windows Error Reporting Service sends error reports and diagnostic data to Microsoft. This may expose sensitive information about system configuration, running processes, and memory contents. Disabling this service prevents potential information disclosure to external parties.
+    impact: Error reports will not be sent to Microsoft. Crash dumps and diagnostic data will not be automatically uploaded. System reliability monitoring may be reduced. Local error logging will still function.
+  
+  hardening_levels:
+    basic:
+      enabled: false
+      value: Manual
+    moderate:
+      enabled: true
+      value: Disabled
+    strict:
+      enabled: true
+      value: Disabled
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name WerSvc -ErrorAction Stop
+      Write-Output $service.StartType
+    } catch {
+      Write-Output "NotInstalled"
+    }
+  expected:
+    type: string
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    $serviceName = 'WerSvc'
+    try {
+      $service = Get-Service -Name $serviceName -ErrorAction Stop
+      if ($service.Status -eq 'Running') {
+        Stop-Service -Name $serviceName -Force -ErrorAction Stop
+      }
+      Set-Service -Name $serviceName -StartupType {{hardening_value}} -ErrorAction Stop
+    } catch {
+      Write-Error "Failed to disable service: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 60
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name WerSvc -ErrorAction Stop
+      $expected = '{{hardening_value}}'
+      if ($service.StartType -eq $expected) { exit 0 } else { exit 1 }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-302_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name WerSvc -ErrorAction Stop
+      "$($service.StartType)|$($service.Status)" | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    } catch {
+      'NotInstalled|Unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $backup = Get-Content '{{backup_location}}' | Select-Object -First 1
+      $parts = $backup -split '\|'
+      $oldStartType = $parts[0]
+      $oldStatus = $parts[1]
+      try {
+        if ($oldStartType -ne 'NotInstalled') {
+          Set-Service -Name WerSvc -StartupType $oldStartType -ErrorAction Stop
+          if ($oldStatus -eq 'Running') {
+            Start-Service -Name WerSvc -ErrorAction SilentlyContinue
+          }
+        }
+      } catch {
+        Write-Warning "Failed to restore service: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 60
+  
+logging:
+  log_level: INFO
+  log_category: system_services
+  audit_trail: true
+  
+reporting:
+  report_section: System Services
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - services
+  - error-reporting
+  - windows-error-reporting
+  - telemetry
+  - privacy
+  - cis
+  
+notes: |
+  Windows Error Reporting (WER) sends crash and error data to Microsoft.
+  Service name: WerSvc (Windows Error Reporting Service)
+  May contain sensitive information in crash dumps and memory contents.
+  Local error logging (Event Viewer) remains functional.
+  Some applications rely on WER for error handling.
+  Consider organizational policy on telemetry and data sharing.
+  Default is Manual (starts on demand) on Windows 10/11.

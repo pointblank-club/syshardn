@@ -1,0 +1,155 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-801
+  category: Windows Firewall
+  subcategory: Private Profile
+  description: Ensure 'Windows Firewall: Private: Inbound connections' is set to 'Block (default)'
+  severity: critical
+  
+  audit:
+    cis_reference: 9.2.2
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Setting the default action for inbound connections to Block ensures that all incoming traffic is denied unless explicitly allowed by a firewall rule. This follows the principle of least privilege and default deny, providing strong protection against unauthorized network access and attack vectors.
+    impact: All inbound connections will be blocked by default. Only explicitly allowed applications and services will receive inbound traffic. Firewall rules must be created for legitimate services. Most client applications work normally as they initiate outbound connections.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 'block'
+    moderate:
+      enabled: true
+      value: 'block'
+    strict:
+      enabled: true
+      value: 'block'
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show privateprofile 2>&1
+      if ($output -match 'InboundUserNotification\s+.*\s+BlockInbound') {
+        Write-Output 'block'
+      } elseif ($output -match 'InboundUserNotification\s+.*\s+AllowInbound') {
+        Write-Output 'allow'
+      } else {
+        Write-Output 'unknown'
+      }
+    } catch {
+      Write-Output 'unknown'
+    }
+  expected:
+    type: string
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $action = if ('{{hardening_value}}' -eq 'block') { 'blockinbound' } else { 'allowinbound' }
+      $result = netsh advfirewall set privateprofile firewallpolicy $action,allowoutbound 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to set firewall policy: $result"
+        exit 1
+      }
+    } catch {
+      Write-Error "Failed to set firewall policy: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show privateprofile 2>&1
+      $expected = '{{hardening_value}}'
+      if ($expected -eq 'block' -and $output -match 'BlockInbound') {
+        exit 0
+      } elseif ($expected -eq 'allow' -and $output -match 'AllowInbound') {
+        exit 0
+      } else {
+        exit 1
+      }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-801_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show privateprofile 2>&1
+      if ($output -match 'InboundUserNotification\s+.*\s+BlockInbound') {
+        'block' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } elseif ($output -match 'InboundUserNotification\s+.*\s+AllowInbound') {
+        'allow' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } else {
+        'unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      }
+    } catch {
+      'unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $oldPolicy = Get-Content '{{backup_location}}' | Select-Object -First 1
+      try {
+        if ($oldPolicy -eq 'block') {
+          netsh advfirewall set privateprofile firewallpolicy blockinbound,allowoutbound | Out-Null
+        } elseif ($oldPolicy -eq 'allow') {
+          netsh advfirewall set privateprofile firewallpolicy allowinbound,allowoutbound | Out-Null
+        }
+      } catch {
+        Write-Warning "Failed to restore firewall policy: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: windows_firewall
+  audit_trail: true
+  
+reporting:
+  report_section: Windows Firewall
+  priority: critical
+  remediation_complexity: low
+  
+tags:
+  - firewall
+  - windows-firewall
+  - private-profile
+  - inbound-connections
+  - default-deny
+  - cis
+  
+notes: |
+  Default inbound action determines behavior for unmatched traffic.
+  BlockInbound = deny all inbound unless explicitly allowed (secure).
+  AllowInbound = allow all inbound unless explicitly denied (insecure).
+  Outbound connections typically remain allowed (allowoutbound).
+  Create firewall rules for services that need inbound access.
+  Use 'netsh advfirewall firewall add rule' to create rules.
+  Test critical services after enabling to ensure connectivity.

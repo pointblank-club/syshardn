@@ -1,0 +1,133 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-500
+  category: System File Permissions
+  subcategory: Critical Files
+  description: Ensure permissions on /etc/passwd are configured (644)
+  severity: high
+  
+  audit:
+    cis_reference: 6.1.2
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The /etc/passwd file contains user account information that is used by many system utilities. This file should be readable by all users but writable only by root. Incorrect permissions could allow unauthorized users to modify account information, potentially leading to privilege escalation or system compromise.
+    impact: Setting proper permissions on /etc/passwd ensures that only root can modify user account information while allowing all users to read it for normal system operations. This should not impact legitimate system functionality.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value:
+        permissions: "644"
+        owner: "root"
+        group: "root"
+    moderate:
+      enabled: true
+      value:
+        permissions: "644"
+        owner: "root"
+        group: "root"
+    strict:
+      enabled: true
+      value:
+        permissions: "644"
+        owner: "root"
+        group: "root"
+  
+check:
+  type: command
+  command: |
+    perms=$(stat -c "%a" /etc/passwd)
+    owner=$(stat -c "%U" /etc/passwd)
+    group=$(stat -c "%G" /etc/passwd)
+    
+    if [ "$perms" = "644" ] && [ "$owner" = "root" ] && [ "$group" = "root" ]; then
+      echo "0"
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    chmod {{hardening_value.permissions}} /etc/passwd
+    chown {{hardening_value.owner}}:{{hardening_value.group}} /etc/passwd
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    perms=$(stat -c "%a" /etc/passwd)
+    owner=$(stat -c "%U" /etc/passwd)
+    group=$(stat -c "%G" /etc/passwd)
+    
+    if [ "$perms" = "{{hardening_value.permissions}}" ] && [ "$owner" = "{{hardening_value.owner}}" ] && [ "$group" = "{{hardening_value.group}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-500_{{timestamp}}.backup"
+  backup_command: |
+    stat -c "%a %U:%G" /etc/passwd > "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      perms=$(awk '{print $1}' "{{backup_location}}")
+      owner=$(awk -F: '{print $1}' "{{backup_location}}" | awk '{print $2}')
+      group=$(awk -F: '{print $2}' "{{backup_location}}")
+      
+      chmod "$perms" /etc/passwd
+      chown "$owner:$group" /etc/passwd
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: file_permissions
+  audit_trail: true
+  
+reporting:
+  report_section: File System Security
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - file-permissions
+  - system-files
+  - passwd
+  - access-control
+  - cis
+  
+notes: |
+  /etc/passwd contains user account information and must be protected.
+  Permissions 644 allow read access for all users but write access only for root.
+  This file must be readable by all users for normal system operations.
+  Ownership should always be root:root.

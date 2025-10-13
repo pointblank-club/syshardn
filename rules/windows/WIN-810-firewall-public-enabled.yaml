@@ -1,0 +1,153 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-810
+  category: Windows Firewall
+  subcategory: Public Profile
+  description: Ensure 'Windows Firewall: Public: Firewall state' is set to 'On (recommended)'
+  severity: critical
+  
+  audit:
+    cis_reference: 9.3.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The Windows Firewall Public profile applies to networks identified as public (airports, cafes, hotels). Enabling the firewall for public networks is critical as these are untrusted environments with potential attackers. This profile should have the strictest settings to protect against network-based attacks from unknown sources.
+    impact: Windows Firewall will be active for public network connections. Inbound traffic will be filtered according to firewall rules. This is the most restrictive profile. Network discovery and file sharing are typically disabled on public networks.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 'on'
+    moderate:
+      enabled: true
+      value: 'on'
+    strict:
+      enabled: true
+      value: 'on'
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show publicprofile state 2>&1
+      if ($output -match 'State\s+ON') {
+        Write-Output 'on'
+      } elseif ($output -match 'State\s+OFF') {
+        Write-Output 'off'
+      } else {
+        Write-Output 'unknown'
+      }
+    } catch {
+      Write-Output 'unknown'
+    }
+  expected:
+    type: string
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $result = netsh advfirewall set publicprofile state {{hardening_value}} 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to enable firewall: $result"
+        exit 1
+      }
+    } catch {
+      Write-Error "Failed to enable firewall: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show publicprofile state 2>&1
+      $expected = '{{hardening_value}}'
+      if ($expected -eq 'on' -and $output -match 'State\s+ON') {
+        exit 0
+      } elseif ($expected -eq 'off' -and $output -match 'State\s+OFF') {
+        exit 0
+      } else {
+        exit 1
+      }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-810_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show publicprofile state 2>&1
+      if ($output -match 'State\s+ON') {
+        'on' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } elseif ($output -match 'State\s+OFF') {
+        'off' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } else {
+        'unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      }
+    } catch {
+      'unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $oldState = Get-Content '{{backup_location}}' | Select-Object -First 1
+      try {
+        if ($oldState -ne 'unknown') {
+          netsh advfirewall set publicprofile state $oldState | Out-Null
+        }
+      } catch {
+        Write-Warning "Failed to restore firewall state: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: windows_firewall
+  audit_trail: true
+  
+reporting:
+  report_section: Windows Firewall
+  priority: critical
+  remediation_complexity: low
+  
+tags:
+  - firewall
+  - windows-firewall
+  - public-profile
+  - network-security
+  - untrusted-networks
+  - cis
+  
+notes: |
+  Public profile is for untrusted networks (airports, cafes, hotels).
+  This is the most restrictive firewall profile.
+  Network discovery and file sharing disabled by default.
+  State ON enables firewall filtering for public networks.
+  State OFF disables firewall (extremely dangerous on public networks).
+  Windows automatically selects profile based on network location.
+  Never disable firewall on public networks - critical security control.
+  Public profile settings should always be strictest.

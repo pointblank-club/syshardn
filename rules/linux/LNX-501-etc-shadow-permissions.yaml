@@ -1,0 +1,139 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-501
+  category: System File Permissions
+  subcategory: Critical Files
+  description: Ensure permissions on /etc/shadow are configured (000 or 400)
+  severity: critical
+  
+  audit:
+    cis_reference: 6.1.3
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The /etc/shadow file contains password hashes and other sensitive authentication information. This file must have the most restrictive permissions possible. Only root should be able to read this file to prevent password hash extraction and potential brute-force attacks offline.
+    impact: Setting strict permissions on /etc/shadow ensures that password hashes cannot be accessed by unauthorized users. This is critical for system security and does not impact normal system operations.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value:
+        permissions: "400"
+        owner: "root"
+        group: "root"
+    moderate:
+      enabled: true
+      value:
+        permissions: "000"
+        owner: "root"
+        group: "root"
+    strict:
+      enabled: true
+      value:
+        permissions: "000"
+        owner: "root"
+        group: "root"
+  
+check:
+  type: command
+  command: |
+    perms=$(stat -c "%a" /etc/shadow)
+    owner=$(stat -c "%U" /etc/shadow)
+    group=$(stat -c "%G" /etc/shadow)
+    
+    if [ "$perms" = "000" ] || [ "$perms" = "400" ]; then
+      if [ "$owner" = "root" ]; then
+        echo "0"
+      else
+        echo "1"
+      fi
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    chmod {{hardening_value.permissions}} /etc/shadow
+    chown {{hardening_value.owner}}:{{hardening_value.group}} /etc/shadow
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    perms=$(stat -c "%a" /etc/shadow)
+    owner=$(stat -c "%U" /etc/shadow)
+    group=$(stat -c "%G" /etc/shadow)
+    
+    if [ "$perms" = "{{hardening_value.permissions}}" ] && [ "$owner" = "{{hardening_value.owner}}" ] && [ "$group" = "{{hardening_value.group}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-501_{{timestamp}}.backup"
+  backup_command: |
+    stat -c "%a %U:%G" /etc/shadow > "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      perms=$(awk '{print $1}' "{{backup_location}}")
+      owner=$(awk -F: '{print $1}' "{{backup_location}}" | awk '{print $2}')
+      group=$(awk -F: '{print $2}' "{{backup_location}}")
+      
+      chmod "$perms" /etc/shadow
+      chown "$owner:$group" /etc/shadow
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: file_permissions
+  audit_trail: true
+  
+reporting:
+  report_section: File System Security
+  priority: critical
+  remediation_complexity: low
+  
+tags:
+  - file-permissions
+  - system-files
+  - shadow
+  - password-security
+  - access-control
+  - cis
+  
+notes: |
+  /etc/shadow contains password hashes and must be strictly protected.
+  Permissions 000 (no access) or 400 (read-only for root) are acceptable.
+  000 is more secure but 400 may be needed for some utilities.
+  This file should never be readable by non-root users.
+  Group ownership can be root or shadow depending on distribution.

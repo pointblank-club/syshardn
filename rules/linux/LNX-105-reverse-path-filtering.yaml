@@ -1,0 +1,133 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-105
+  category: Network Configuration
+  subcategory: Reverse Path Filtering
+  description: Ensure reverse path filtering is enabled
+  severity: medium
+  
+  audit:
+    cis_reference: 3.2.7
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Reverse path filtering helps prevent IP spoofing by verifying that the source address of incoming packets can be reached through the interface the packet arrived on. This prevents attackers from sending packets with forged source addresses, which is commonly used in DDoS attacks and other exploits.
+    impact: In most environments, enabling reverse path filtering will not affect legitimate traffic. However, in complex routing scenarios with asymmetric routing, it may need to be configured differently.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 1
+    moderate:
+      enabled: true
+      value: 1
+    strict:
+      enabled: true
+      value: 1
+  
+check:
+  type: command
+  command: |
+    all=$(sysctl -n net.ipv4.conf.all.rp_filter)
+    default=$(sysctl -n net.ipv4.conf.default.rp_filter)
+    if [ "$all" -ge "{{hardening_value}}" ] && [ "$default" -ge "{{hardening_value}}" ]; then
+      echo "0"
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    sysctl -w net.ipv4.conf.all.rp_filter={{hardening_value}}
+    sysctl -w net.ipv4.conf.default.rp_filter={{hardening_value}}
+    
+    echo "net.ipv4.conf.all.rp_filter = {{hardening_value}}" > /etc/sysctl.d/99-rp-filter.conf
+    echo "net.ipv4.conf.default.rp_filter = {{hardening_value}}" >> /etc/sysctl.d/99-rp-filter.conf
+    
+    for param in "net.ipv4.conf.all.rp_filter" "net.ipv4.conf.default.rp_filter"; do
+      if grep -q "^$param" /etc/sysctl.conf; then
+        sed -i "s/^$param.*/$param = {{hardening_value}}/" /etc/sysctl.conf
+      fi
+    done
+    
+    sysctl -w net.ipv4.route.flush=1
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    all=$(sysctl -n net.ipv4.conf.all.rp_filter)
+    default=$(sysctl -n net.ipv4.conf.default.rp_filter)
+    if [ "$all" -ge "{{hardening_value}}" ] && [ "$default" -ge "{{hardening_value}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-105_{{timestamp}}.backup"
+  backup_command: |
+    echo "net.ipv4.conf.all.rp_filter=$(sysctl -n net.ipv4.conf.all.rp_filter)" > "{{backup_location}}"
+    echo "net.ipv4.conf.default.rp_filter=$(sysctl -n net.ipv4.conf.default.rp_filter)" >> "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      while IFS='=' read -r param value; do
+        sysctl -w "$param=$value"
+      done < "{{backup_location}}"
+      
+      rm -f /etc/sysctl.d/99-rp-filter.conf
+      sysctl -w net.ipv4.route.flush=1
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: network_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: Network Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - network
+  - rp-filter
+  - anti-spoofing
+  - ipv4
+  - cis
+  
+notes: |
+  Reverse path filtering helps prevent IP spoofing attacks.
+  Value 1 enables strict mode (recommended for most systems).
+  Value 2 enables loose mode (needed for asymmetric routing).
+  Value 0 disables rp_filter (not recommended).
+  Most modern Linux distributions enable this by default.

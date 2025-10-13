@@ -1,0 +1,157 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-142
+  category: Local Policies
+  subcategory: User Account Control
+  description: Ensure 'User Account Control: Run all administrators in Admin Approval Mode' is set to 'Enabled'
+  severity: critical
+  
+  audit:
+    cis_reference: 2.3.17.6
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: This setting enables User Account Control (UAC) Admin Approval Mode, which is the foundation of UAC. When enabled, all administrators run with standard user privileges by default and must explicitly elevate to perform administrative tasks. This is critical for protecting against malware and unauthorized privilege escalation.
+    impact: UAC will be enabled and all administrators will run with standard privileges until elevated. Users will see UAC prompts when performing administrative tasks. This is a fundamental Windows security feature.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 1
+    moderate:
+      enabled: true
+      value: 1
+    strict:
+      enabled: true
+      value: 1
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'EnableLUA'
+      if (Test-Path $regPath) {
+        $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $regName
+        if ($null -eq $value) {
+          Write-Output 1
+        } else {
+          Write-Output $value
+        }
+      } else {
+        Write-Output 1
+      }
+    } catch {
+      Write-Output 1
+    }
+  expected:
+    type: number
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    $regName = 'EnableLUA'
+    try {
+      if (-not (Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+      }
+      Set-ItemProperty -Path $regPath -Name $regName -Value {{hardening_value}} -Type DWord -Force
+    } catch {
+      Write-Error "Failed to set registry value: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'EnableLUA'
+      $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction Stop | Select-Object -ExpandProperty $regName
+      $expected = [int]"{{hardening_value}}"
+      if ($value -eq $expected) { exit 0 } else { exit 1 }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-142_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'EnableLUA'
+      $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $regName
+      if ($null -eq $value) {
+        'NotSet' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } else {
+        $value | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      }
+    } catch {
+      'NotSet' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $oldValue = Get-Content '{{backup_location}}' | Select-Object -First 1
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'EnableLUA'
+      try {
+        if ($oldValue -eq 'NotSet') {
+          Set-ItemProperty -Path $regPath -Name $regName -Value 1 -Type DWord -Force
+        } else {
+          Set-ItemProperty -Path $regPath -Name $regName -Value ([int]$oldValue) -Type DWord -Force
+        }
+      } catch {
+        Write-Warning "Failed to restore registry value: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: user_account_control
+  audit_trail: true
+  
+reporting:
+  report_section: User Account Control
+  priority: critical
+  remediation_complexity: low
+  
+tags:
+  - uac
+  - user-account-control
+  - enable-lua
+  - admin-approval-mode
+  - privilege-elevation
+  - cis
+  
+notes: |
+  EnableLUA = 1 enables UAC Admin Approval Mode (secure, default).
+  EnableLUA = 0 disables UAC completely (EXTREMELY INSECURE).
+  LUA = Limited User Account (principle of least privilege).
+  This is the master switch for UAC functionality.
+  Disabling UAC is strongly discouraged and breaks security.
+  Required for other UAC settings to function properly.
+  Default value is 1 (enabled) on Windows 10/11.

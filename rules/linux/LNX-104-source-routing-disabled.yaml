@@ -1,0 +1,145 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-104
+  category: Network Configuration
+  subcategory: Source Routing
+  description: Ensure source routed packets are not accepted
+  severity: medium
+  
+  audit:
+    cis_reference: 3.2.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Source routing allows the sender of a packet to specify the route the packet takes through the network. An attacker can use source routing to direct traffic through a compromised system or to bypass security controls. Disabling source routing prevents these attacks.
+    impact: Source routing is rarely used in legitimate network operations. Disabling it will not affect normal network traffic.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 0
+    moderate:
+      enabled: true
+      value: 0
+    strict:
+      enabled: true
+      value: 0
+  
+check:
+  type: command
+  command: |
+    all=$(sysctl -n net.ipv4.conf.all.accept_source_route)
+    default=$(sysctl -n net.ipv4.conf.default.accept_source_route)
+    if [ "$all" -eq "{{hardening_value}}" ] && [ "$default" -eq "{{hardening_value}}" ]; then
+      echo "0"
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    sysctl -w net.ipv4.conf.all.accept_source_route={{hardening_value}}
+    sysctl -w net.ipv4.conf.default.accept_source_route={{hardening_value}}
+    sysctl -w net.ipv6.conf.all.accept_source_route={{hardening_value}}
+    sysctl -w net.ipv6.conf.default.accept_source_route={{hardening_value}}
+    
+    echo "net.ipv4.conf.all.accept_source_route = {{hardening_value}}" > /etc/sysctl.d/99-source-routing.conf
+    echo "net.ipv4.conf.default.accept_source_route = {{hardening_value}}" >> /etc/sysctl.d/99-source-routing.conf
+    echo "net.ipv6.conf.all.accept_source_route = {{hardening_value}}" >> /etc/sysctl.d/99-source-routing.conf
+    echo "net.ipv6.conf.default.accept_source_route = {{hardening_value}}" >> /etc/sysctl.d/99-source-routing.conf
+    
+    for param in "net.ipv4.conf.all.accept_source_route" "net.ipv4.conf.default.accept_source_route" \
+                 "net.ipv6.conf.all.accept_source_route" "net.ipv6.conf.default.accept_source_route"; do
+      if grep -q "^$param" /etc/sysctl.conf; then
+        sed -i "s/^$param.*/$param = {{hardening_value}}/" /etc/sysctl.conf
+      fi
+    done
+    
+    sysctl -w net.ipv4.route.flush=1
+    if [ -f /proc/sys/net/ipv6/route/flush ]; then
+      sysctl -w net.ipv6.route.flush=1
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    all=$(sysctl -n net.ipv4.conf.all.accept_source_route)
+    default=$(sysctl -n net.ipv4.conf.default.accept_source_route)
+    if [ "$all" -eq "{{hardening_value}}" ] && [ "$default" -eq "{{hardening_value}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-104_{{timestamp}}.backup"
+  backup_command: |
+    echo "net.ipv4.conf.all.accept_source_route=$(sysctl -n net.ipv4.conf.all.accept_source_route)" > "{{backup_location}}"
+    echo "net.ipv4.conf.default.accept_source_route=$(sysctl -n net.ipv4.conf.default.accept_source_route)" >> "{{backup_location}}"
+    echo "net.ipv6.conf.all.accept_source_route=$(sysctl -n net.ipv6.conf.all.accept_source_route)" >> "{{backup_location}}"
+    echo "net.ipv6.conf.default.accept_source_route=$(sysctl -n net.ipv6.conf.default.accept_source_route)" >> "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      while IFS='=' read -r param value; do
+        sysctl -w "$param=$value"
+      done < "{{backup_location}}"
+      
+      rm -f /etc/sysctl.d/99-source-routing.conf
+      
+      sysctl -w net.ipv4.route.flush=1
+      if [ -f /proc/sys/net/ipv6/route/flush ]; then
+        sysctl -w net.ipv6.route.flush=1
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: network_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: Network Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - network
+  - source-routing
+  - ipv4
+  - ipv6
+  - cis
+  
+notes: |
+  Source routing is a rarely used feature that can be exploited by attackers.
+  This rule disables source routing for both IPv4 and IPv6.
+  Disabling source routing is a best practice for security.

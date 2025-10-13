@@ -1,0 +1,144 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-700
+  category: Logging
+  subcategory: systemd-journald
+  description: Ensure systemd-journald service is enabled and active
+  severity: high
+  
+  audit:
+    cis_reference: 4.2.1.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: systemd-journald is a system service that collects and stores logging data. It creates and maintains structured, indexed journals based on logging information received from various sources. Proper logging is essential for security monitoring, incident response, and compliance requirements.
+    impact: systemd-journald will be enabled and active, ensuring that system logs are collected and maintained. This is critical for security monitoring and should not negatively impact system operations.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: enabled
+    moderate:
+      enabled: true
+      value: enabled
+    strict:
+      enabled: true
+      value: enabled
+  
+check:
+  type: command
+  command: |
+    enabled=$(systemctl is-enabled systemd-journald 2>/dev/null || echo "static")
+    active=$(systemctl is-active systemd-journald 2>/dev/null || echo "inactive")
+    
+    if [ "$enabled" = "static" ] || [ "$enabled" = "enabled" ]; then
+      if [ "$active" = "active" ]; then
+        echo "0"
+      else
+        echo "1"
+      fi
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    systemctl unmask systemd-journald.service 2>/dev/null || true
+    systemctl enable systemd-journald.service 2>/dev/null || true
+    systemctl start systemd-journald.service 2>/dev/null || true
+    
+    if [ ! -d /var/log/journal ]; then
+      mkdir -p /var/log/journal
+      systemd-tmpfiles --create --prefix /var/log/journal
+      systemctl restart systemd-journald.service
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    enabled=$(systemctl is-enabled systemd-journald 2>/dev/null || echo "static")
+    active=$(systemctl is-active systemd-journald 2>/dev/null || echo "inactive")
+    
+    if [ "$enabled" = "static" ] || [ "$enabled" = "enabled" ]; then
+      if [ "$active" = "active" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-700_{{timestamp}}.backup"
+  backup_command: |
+    enabled=$(systemctl is-enabled systemd-journald 2>/dev/null || echo "static")
+    active=$(systemctl is-active systemd-journald 2>/dev/null || echo "inactive")
+    echo "enabled=$enabled" > "{{backup_location}}"
+    echo "active=$active" >> "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      source "{{backup_location}}"
+      
+      if [ "$active" = "inactive" ]; then
+        systemctl stop systemd-journald.service 2>/dev/null || true
+      fi
+      
+      if [ "$enabled" = "disabled" ] || [ "$enabled" = "masked" ]; then
+        systemctl disable systemd-journald.service 2>/dev/null || true
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: logging_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: Logging and Auditing
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - logging
+  - systemd
+  - journald
+  - audit
+  - cis
+  
+notes: |
+  systemd-journald is the core logging component in systemd-based systems.
+  It is typically set to 'static' which means it cannot be disabled.
+  Logs are stored in /var/log/journal if persistent logging is configured.
+  Journal logs can be viewed with the 'journalctl' command.
+  This service is critical for security monitoring and troubleshooting.

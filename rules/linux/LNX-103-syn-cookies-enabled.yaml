@@ -1,0 +1,121 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-103
+  category: Network Configuration
+  subcategory: TCP
+  description: Ensure TCP SYN cookies are enabled
+  severity: medium
+  
+  audit:
+    cis_reference: 3.2.8
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Attackers use SYN flood attacks to perform a denial of service attack by sending many SYN packets without completing the TCP handshake. TCP SYN cookies allow the system to keep accepting valid connections when under a SYN flood attack. When enabled, the system will send a SYN-ACK with a specially crafted TCP sequence number derived from the client's SYN packet, allowing the server to avoid allocating resources until the connection is fully established.
+    impact: SYN cookies may have a slight performance overhead but provide important protection against SYN flood attacks. Modern systems handle this efficiently.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 1
+    moderate:
+      enabled: true
+      value: 1
+    strict:
+      enabled: true
+      value: 1
+  
+check:
+  type: command
+  command: sysctl net.ipv4.tcp_syncookies | awk '{print $3}'
+  expected:
+    type: number
+    operator: "=="
+    value: '{{hardening_value}}'
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    sysctl -w net.ipv4.tcp_syncookies={{hardening_value}}
+    
+    echo "net.ipv4.tcp_syncookies = {{hardening_value}}" > /etc/sysctl.d/99-tcp-syncookies.conf
+    
+    if grep -q "^net.ipv4.tcp_syncookies" /etc/sysctl.conf; then
+      sed -i "s/^net.ipv4.tcp_syncookies.*/net.ipv4.tcp_syncookies = {{hardening_value}}/" /etc/sysctl.conf
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    current=$(sysctl -n net.ipv4.tcp_syncookies)
+    if [ "$current" -eq "{{hardening_value}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-103_{{timestamp}}.backup"
+  backup_command: |
+    echo "net.ipv4.tcp_syncookies=$(sysctl -n net.ipv4.tcp_syncookies)" > "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      old_value=$(grep -oP 'net.ipv4.tcp_syncookies=\K.*' "{{backup_location}}")
+      sysctl -w net.ipv4.tcp_syncookies=$old_value
+      
+      rm -f /etc/sysctl.d/99-tcp-syncookies.conf
+      
+      if [ -n "$old_value" ]; then
+        if grep -q "^net.ipv4.tcp_syncookies" /etc/sysctl.conf; then
+          sed -i "s/^net.ipv4.tcp_syncookies.*/net.ipv4.tcp_syncookies = $old_value/" /etc/sysctl.conf
+        fi
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: network_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: Network Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - network
+  - tcp
+  - syn-flood
+  - dos-protection
+  - cis
+  
+notes: |
+  TCP SYN cookies provide protection against SYN flood denial of service attacks.
+  Value 1 enables SYN cookies (recommended).
+  Value 0 disables SYN cookies (not recommended).
+  Most modern Linux distributions enable this by default.

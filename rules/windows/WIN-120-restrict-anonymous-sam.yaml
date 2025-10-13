@@ -1,0 +1,154 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-120
+  category: Local Policies
+  subcategory: Security Options - Network Access
+  description: Ensure 'Network access: Do not allow anonymous enumeration of SAM accounts' is set to 'Enabled'
+  severity: high
+  
+  audit:
+    cis_reference: 2.3.10.2
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Enabling this setting prevents anonymous users from enumerating Security Accounts Manager (SAM) account names. This helps protect against reconnaissance attacks where attackers attempt to discover valid usernames for password guessing or other attacks.
+    impact: Anonymous users will not be able to enumerate SAM account names. This should not affect legitimate network operations and improves security.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 1
+    moderate:
+      enabled: true
+      value: 1
+    strict:
+      enabled: true
+      value: 1
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+      $regName = 'RestrictAnonymousSAM'
+      if (Test-Path $regPath) {
+        $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $regName
+        if ($null -eq $value) {
+          Write-Output 0
+        } else {
+          Write-Output $value
+        }
+      } else {
+        Write-Output 0
+      }
+    } catch {
+      Write-Output 0
+    }
+  expected:
+    type: number
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+    $regName = 'RestrictAnonymousSAM'
+    try {
+      if (-not (Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+      }
+      Set-ItemProperty -Path $regPath -Name $regName -Value {{hardening_value}} -Type DWord -Force
+    } catch {
+      Write-Error "Failed to set registry value: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+      $regName = 'RestrictAnonymousSAM'
+      $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction Stop | Select-Object -ExpandProperty $regName
+      $expected = [int]"{{hardening_value}}"
+      if ($value -eq $expected) { exit 0 } else { exit 1 }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-120_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+      $regName = 'RestrictAnonymousSAM'
+      $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $regName
+      if ($null -eq $value) {
+        'NotSet' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } else {
+        $value | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      }
+    } catch {
+      'NotSet' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $oldValue = Get-Content '{{backup_location}}' | Select-Object -First 1
+      $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
+      $regName = 'RestrictAnonymousSAM'
+      try {
+        if ($oldValue -eq 'NotSet') {
+          Remove-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue
+        } else {
+          Set-ItemProperty -Path $regPath -Name $regName -Value ([int]$oldValue) -Type DWord -Force
+        }
+      } catch {
+        Write-Warning "Failed to restore registry value: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: local_policies
+  audit_trail: true
+  
+reporting:
+  report_section: Security Options
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - security-options
+  - network-access
+  - sam-enumeration
+  - anonymous-access
+  - cis
+  
+notes: |
+  RestrictAnonymousSAM = 1 prevents anonymous enumeration (secure).
+  RestrictAnonymousSAM = 0 allows anonymous enumeration (insecure).
+  Prevents attackers from discovering valid usernames.
+  Critical for preventing reconnaissance attacks.
+  SAM = Security Accounts Manager (local user account database).

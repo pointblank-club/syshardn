@@ -1,0 +1,141 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-300
+  category: Services
+  subcategory: System Services
+  description: Ensure 'Remote Desktop Services (TermService)' is set to 'Disabled'
+  severity: high
+  
+  audit:
+    cis_reference: 5.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Remote Desktop Services (formerly Terminal Services) allows remote access to the system. If not required, this service should be disabled to reduce the attack surface. Unauthorized remote access could lead to data theft, malware installation, or system compromise.
+    impact: Remote Desktop Protocol (RDP) connections will not be accepted on this system. Users will not be able to connect remotely via RDP. Local console access will still work normally.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: Disabled
+    moderate:
+      enabled: true
+      value: Disabled
+    strict:
+      enabled: true
+      value: Disabled
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name TermService -ErrorAction Stop
+      Write-Output $service.StartType
+    } catch {
+      Write-Output "NotInstalled"
+    }
+  expected:
+    type: string
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    $serviceName = 'TermService'
+    try {
+      $service = Get-Service -Name $serviceName -ErrorAction Stop
+      if ($service.Status -eq 'Running') {
+        Stop-Service -Name $serviceName -Force -ErrorAction Stop
+      }
+      Set-Service -Name $serviceName -StartupType {{hardening_value}} -ErrorAction Stop
+    } catch {
+      Write-Error "Failed to disable service: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 60
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name TermService -ErrorAction Stop
+      $expected = '{{hardening_value}}'
+      if ($service.StartType -eq $expected) { exit 0 } else { exit 1 }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-300_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name TermService -ErrorAction Stop
+      "$($service.StartType)|$($service.Status)" | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    } catch {
+      'NotInstalled|Unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $backup = Get-Content '{{backup_location}}' | Select-Object -First 1
+      $parts = $backup -split '\|'
+      $oldStartType = $parts[0]
+      $oldStatus = $parts[1]
+      try {
+        if ($oldStartType -ne 'NotInstalled') {
+          Set-Service -Name TermService -StartupType $oldStartType -ErrorAction Stop
+          if ($oldStatus -eq 'Running') {
+            Start-Service -Name TermService -ErrorAction SilentlyContinue
+          }
+        }
+      } catch {
+        Write-Warning "Failed to restore service: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 60
+  
+logging:
+  log_level: INFO
+  log_category: system_services
+  audit_trail: true
+  
+reporting:
+  report_section: System Services
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - services
+  - remote-desktop
+  - rdp
+  - terminal-services
+  - remote-access
+  - cis
+  
+notes: |
+  Remote Desktop Services (TermService) enables RDP connections.
+  StartType: Disabled = service cannot start automatically or manually.
+  StartType: Manual = service can be started when needed.
+  StartType: Automatic = service starts at boot.
+  Disabling RDP is recommended unless remote access is required.
+  Consider using VPN instead of direct RDP exposure.
+  Network Level Authentication (NLA) should be enabled if RDP is used.

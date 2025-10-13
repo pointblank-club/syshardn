@@ -9,7 +9,7 @@ rule:
   id: WIN-100
   category: Local Policies
   subcategory: Security Options - Accounts
-  description: Ensure 'Accounts: Guest account status' is set to 'Disabled'
+  description: "Ensure 'Accounts: Guest account status' is set to 'Disabled'"
   severity: high
   
   audit:

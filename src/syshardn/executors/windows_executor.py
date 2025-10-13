@@ -262,7 +262,7 @@ class WindowsExecutor(BaseExecutor):
         try:
             if value_type == "number":
                 current_val = float(current)
-                expected_val = float(expected)
+                expected_val = float(expected) if not isinstance(expected, list) else float(expected[0])
                 
                 if operator == "==":
                     return current_val == expected_val
@@ -276,12 +276,20 @@ class WindowsExecutor(BaseExecutor):
                     return current_val < expected_val
                 elif operator == "!=":
                     return current_val != expected_val
+                elif operator == "in":
+                    if isinstance(expected, list):
+                        return current_val in [float(x) for x in expected]
+                    return False
             
-            else:
+            else: 
                 if operator == "==":
                     return current.lower() == str(expected).lower()
                 elif operator == "!=":
                     return current.lower() != str(expected).lower()
+                elif operator == "in":
+                    if isinstance(expected, list):
+                        return current.lower() in [str(x).lower() for x in expected]
+                    return False
                 elif operator == "contains":
                     return str(expected).lower() in current.lower()
                 elif operator == "regex":

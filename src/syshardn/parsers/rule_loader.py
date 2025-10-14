@@ -17,14 +17,16 @@ console = Console()
 class RuleLoader:
     """Loads and parses YAML rule files."""
 
-    def __init__(self, rules_dir: str):
+    def __init__(self, rules_dir: str, verbose: bool = False):
         """
         Initialize RuleLoader.
 
         Args:
             rules_dir: Path to the rules directory
+            verbose: Whether to print loading messages
         """
         self.rules_dir = Path(rules_dir)
+        self.verbose = verbose
         if not self.rules_dir.exists():
             raise ValueError(f"Rules directory not found: {rules_dir}")
 
@@ -56,9 +58,10 @@ class RuleLoader:
 
             rule_id = rule_data.get("rule", {}).get("id", "unknown")
             description = rule_data.get("rule", {}).get("description", "No description")
-            if len(description) > 60:
-                description = description[:57] + "..."
-            console.print(f"[dim]Loaded {rule_id}: {description}[/dim]")
+            if self.verbose:
+                if len(description) > 60:
+                    description = description[:57] + "..."
+                console.print(f"[dim]Loaded {rule_id}: {description}[/dim]")
 
             rule_data["_file_path"] = str(rule_file)
 

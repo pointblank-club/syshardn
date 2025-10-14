@@ -365,6 +365,7 @@ def check(
             rule_data = rule.get("rule", {})
             description = rule_data.get("description", "")
             category = rule_data.get("category", "N/A")
+            severity = rule_data.get("severity", "N/A")
             
             progress.update(task, description=f"Checking {rule_id}: {description[:50]}...")
             
@@ -373,6 +374,7 @@ def check(
 
                 result["description"] = description
                 result["category"] = category
+                result["severity"] = severity
                 results.append(result)
                 if logger:
                     logger.info(f"Checked rule {rule_id}: {result['status']}")
@@ -385,6 +387,7 @@ def check(
                     "message": str(e),
                     "description": description,
                     "category": category,
+                    "severity": severity,
                 })
             
             progress.advance(task)

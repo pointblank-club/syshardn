@@ -123,15 +123,15 @@ class ReportGenerator:
         table = Table(title="Detailed Results", show_lines=True)
         
         table.add_column("ID", style="cyan", no_wrap=True)
-        table.add_column("Title", style="white")
-        table.add_column("Level", justify="center")
+        table.add_column("Severity", justify="center")
         table.add_column("Status", justify="center")
+        table.add_column("Description", style="white")
         table.add_column("Details", style="dim")
         
         for result in results:
             rule_id = result.get('rule_id', 'N/A')
-            title = result.get('title', 'N/A')
-            level = result.get('level', 'N/A').upper()
+            description = result.get('description', result.get('title', 'N/A'))
+            severity = result.get('severity', 'N/A').upper()
 
             status_value = result.get('status', 'unknown')
             if status_value == 'error':
@@ -147,21 +147,25 @@ class ReportGenerator:
                 status = "[dim]SKIP[/dim]"
                 details = result.get('message', 'Skipped')
 
-            level_colored = self._color_level(level)
+            severity_colored = self._color_severity(severity)
             
-            table.add_row(rule_id, title, level_colored, status, details)
+            table.add_row(rule_id, severity_colored, status, description, details)
         
         self.console.print(table)
     
-    def _color_level(self, level: str) -> str:
+    def _color_severity(self, severity: str) -> str:
         """Apply color to severity level."""
-        level_upper = level.upper()
-        if level_upper == 'L1':
-            return "[yellow]L1[/yellow]"
-        elif level_upper == 'L2':
-            return "[red]L2[/red]"
+        severity_upper = severity.upper()
+        if severity_upper == 'CRITICAL':
+            return "[bold red]CRITICAL[/bold red]"
+        elif severity_upper == 'HIGH':
+            return "[red]HIGH[/red]"
+        elif severity_upper == 'MEDIUM':
+            return "[yellow]MEDIUM[/yellow]"
+        elif severity_upper == 'LOW':
+            return "[dim]LOW[/dim]"
         else:
-            return level
+            return severity
     
     def _generate_json_report(
         self,

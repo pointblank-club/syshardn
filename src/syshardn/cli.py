@@ -362,14 +362,17 @@ def check(
         
         for rule in filtered_rules:
             rule_id = rule.get("rule", {}).get("id")
-            description = rule.get("rule", {}).get("description", "")
+            rule_data = rule.get("rule", {})
+            description = rule_data.get("description", "")
+            category = rule_data.get("category", "N/A")
             
             progress.update(task, description=f"Checking {rule_id}: {description[:50]}...")
             
             try:
                 result = executor.check_rule(rule, level)
-                # Add description to result for JSON reports
+
                 result["description"] = description
+                result["category"] = category
                 results.append(result)
                 if logger:
                     logger.info(f"Checked rule {rule_id}: {result['status']}")
@@ -381,6 +384,7 @@ def check(
                     "status": "error",
                     "message": str(e),
                     "description": description,
+                    "category": category,
                 })
             
             progress.advance(task)

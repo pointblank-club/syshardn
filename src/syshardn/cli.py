@@ -817,6 +817,10 @@ def list_rules(ctx, os_filter: Optional[str], category: Optional[str], severity:
     """
     rule_loader = RuleLoader(str(ctx.obj["rules_dir"]))
 
+    if os_filter is None:
+        os_detector = OSDetector()
+        os_filter = os_detector.get_os_type()
+    
     loaded_rules = rule_loader.load_rules(os_type=os_filter)
 
     filtered_rules = []

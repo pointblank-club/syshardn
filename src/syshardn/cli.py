@@ -271,6 +271,12 @@ def cli(ctx, log_level: str, log_file: Optional[str]):
     help="Generate report file (supports .txt, .json, .html)",
 )
 @click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output results as JSON to console",
+)
+@click.option(
     "--verbose",
     is_flag=True,
     help="Show detailed output",
@@ -283,6 +289,7 @@ def check(
     category: Optional[str],
     severity: Optional[str],
     report: Optional[str],
+    json_output: bool,
     verbose: bool,
 ):
     """
@@ -290,6 +297,10 @@ def check(
     
     This command audits the system without making any changes.
     """
+    if json_output and report:
+        console.print("[red]Error: Cannot use --json with --report. Use --json for console output or --report for file output.[/red]")
+        sys.exit(1)
+    
     if logger:
         logger.info(f"Starting compliance check with level: {level}")
 
@@ -374,7 +385,11 @@ def check(
             
             progress.advance(task)
 
-    _display_check_results(results, verbose)
+    # Handle JSON output to console
+    if json_output:
+        _output_json_to_console(results, os_detector, level)
+    else:
+        _display_check_results(results, verbose)
     
     if report:
         _generate_report(results, report, os_detector, level)
@@ -962,6 +977,40 @@ def _display_detailed_rule(rule: dict):
         f"[bold]Rationale:[/bold] {rule_data.get('audit', {}).get('rationale', 'N/A')[:200]}...",
         border_style="cyan"
     ))
+
+
+def _output_json_to_console(results: List[dict], os_detector: OSDetector, level: str):
+    """Output JSON report directly to console."""
+    import json
+    from datetime import datetime
+    
+    # Calculate summary statistics
+    total = len(results)
+    passed = sum(1 for r in results if r.get('status') == 'pass')
+    failed = sum(1 for r in results if r.get('status') == 'fail')
+    errors = sum(1 for r in results if r.get('status') == 'error')
+    compliance_rate = (passed / total * 100) if total > 0 else 0
+    
+    report_data = {
+        "title": f"System Hardening Report - {level.upper()}",
+        "generated": datetime.now().isoformat(),
+        "os_info": {
+            "type": os_detector.get_os_type(),
+            "version": os_detector.get_version(),
+            "distro": os_detector.get_distro() if hasattr(os_detector, 'get_distro') else None
+        },
+        "summary": {
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "errors": errors,
+            "compliance_rate": round(compliance_rate, 2)
+        },
+        "results": results
+    }
+    
+    # Print JSON to console with pretty formatting
+    print(json.dumps(report_data, indent=2, ensure_ascii=False))
 
 
 def _generate_report(results: List[dict], report_path: str, os_detector: OSDetector, level: str):

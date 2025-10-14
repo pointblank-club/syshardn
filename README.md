@@ -270,41 +270,6 @@ rule:
 
 ---
 
-## 📁 Project Structure
-
-```
-syshardn/
-├── rules/                      # Security rule definitions
-│   ├── README.md              # Rules overview
-│   ├── docs/                  # Rule documentation
-│   │   ├── INDEX.md           # Complete rule catalog
-│   │   ├── SCHEMA.md          # Rule schema specification
-│   │   ├── NAMING_CONVENTIONS.md
-│   │   ├── PLATFORM_COMPARISON.md
-│   │   ├── QUICK_REFERENCE.md
-│   │   └── MIGRATION.md
-│   ├── templates/             # Rule templates
-│   │   └── TEMPLATE.yaml      # Base template
-│   ├── windows/               # Windows rules (WIN-*)
-│   │   ├── README.md
-│   │   └── WIN-*.yaml         # Windows rule files
-│   └── linux/                 # Linux rules (LNX-*)
-│       ├── README.md
-│       └── LNX-*.yaml         # Linux rule files
-├── src/                       # Source code
-│   ├── core/                  # Core engine
-│   ├── parsers/               # YAML rule parsers
-│   ├── executors/             # Platform-specific executors
-│   ├── reporters/             # Report generators
-│   └── cli/                   # CLI interface
-├── tests/                     # Test suite
-├── docs/                      # Project documentation
-├── backups/                   # Configuration backups
-└── logs/                      # Audit logs
-```
-
----
-
 
 ## 🛡️ Supported Security Standards
 
@@ -363,7 +328,6 @@ Tests live under the `tests/` directory. Current test files in this repository a
 The project uses pytest and is configured by `pytest.ini`. The CI runs tests with coverage using:
 
 ```bash
-# CI-like command (verbose + coverage)
 python -m pytest tests/ -v --cov=src/syshardn --cov-report=term-missing
 ```
 
@@ -388,13 +352,6 @@ Developer notes:
 ```bash
 pip install -r requirements-dev.txt
 ```
-
-- There is no Makefile shipped with the repository by default. References to `make test` in older
-  docs are inaccurate unless you add your own Makefile that wraps pytest.
-- The `syshardn` CLI commands mentioned elsewhere (for validating rules or running rule checks) are
-  separate from the pytest-based unit/integration tests; use them for runtime validation, and pytest
-  for automated testing.
-
 
 ---
 

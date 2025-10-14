@@ -363,7 +363,7 @@ pip install -r requirements-dev.txt
 
 ## 🔗 Resources
 
-- [Rule Template](rules/TEMPLATE.yaml)
+- [Rule Template](rules/templates/TEMPLATE.yaml)
 - [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks/)
 - [Issue Tracker](https://github.com/aswinr24/syshardn/issues)
 

@@ -431,6 +431,12 @@ def check(
     default="./backups",
     help="Directory for backup files",
 )
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output results as JSON to console",
+)
 @click.pass_context
 def apply(
     ctx,
@@ -440,6 +446,7 @@ def apply(
     dry_run: bool,
     force: bool,
     backup_dir: str,
+    json_output: bool,
 ):
     """
     Apply hardening rules to the system.
@@ -457,14 +464,15 @@ def apply(
     os_detector = OSDetector()
     os_type = os_detector.get_os_type()
     
-    console.print(Panel.fit(
-        f"[bold yellow]SysHardn - Apply Hardening[/bold yellow]\n"
-        f"OS: {os_type.capitalize()}\n"
-        f"Version: {os_detector.get_version()}\n"
-        f"Hardening Level: {level.capitalize()}\n"
-        f"Mode: {'DRY RUN' if dry_run else 'APPLY'}",
-        border_style="yellow"
-    ))
+    if not json_output:
+        console.print(Panel.fit(
+            f"[bold yellow]SysHardn - Apply Hardening[/bold yellow]\n"
+            f"OS: {os_type.capitalize()}\n"
+            f"Version: {os_detector.get_version()}\n"
+            f"Hardening Level: {level.capitalize()}\n"
+            f"Mode: {'DRY RUN' if dry_run else 'APPLY'}",
+            border_style="yellow"
+        ))
 
     rule_loader = RuleLoader(str(ctx.obj["rules_dir"]))
     
@@ -484,32 +492,37 @@ def apply(
     ]
     
     if not filtered_rules:
-        console.print("[yellow]No rules matched the criteria[/yellow]")
+        if json_output:
+            import json
+            print(json.dumps({"error": "No rules matched the criteria", "rules": []}, indent=2))
+        else:
+            console.print("[yellow]No rules matched the criteria[/yellow]")
         return
 
-    console.print(f"\n[bold]Rules to apply: {len(filtered_rules)}[/bold]\n")
-    
-    table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("Rule ID", style="cyan")
-    table.add_column("Category")
-    table.add_column("Description")
-    table.add_column("Severity")
-    
-    for rule in filtered_rules[:10]:
-        rule_data = rule.get("rule", {})
-        table.add_row(
-            rule_data.get("id", ""),
-            rule_data.get("category", ""),
-            rule_data.get("description", "")[:50] + "...",
-            rule_data.get("severity", ""),
-        )
-    
-    if len(filtered_rules) > 10:
-        table.add_row("...", "...", f"and {len(filtered_rules) - 10} more", "...")
-    
-    console.print(table)
+    if not json_output:
+        console.print(f"\n[bold]Rules to apply: {len(filtered_rules)}[/bold]\n")
+        
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Rule ID", style="cyan")
+        table.add_column("Category")
+        table.add_column("Description")
+        table.add_column("Severity")
+        
+        for rule in filtered_rules[:10]:
+            rule_data = rule.get("rule", {})
+            table.add_row(
+                rule_data.get("id", ""),
+                rule_data.get("category", ""),
+                rule_data.get("description", "")[:50] + "...",
+                rule_data.get("severity", ""),
+            )
+        
+        if len(filtered_rules) > 10:
+            table.add_row("...", "...", f"and {len(filtered_rules) - 10} more", "...")
+        
+        console.print(table)
 
-    if not force and not dry_run:
+    if not force and not dry_run and not json_output:
         if not click.confirm("\nDo you want to continue?"):
             console.print("[yellow]Aborted[/yellow]")
             return
@@ -519,26 +532,21 @@ def apply(
     executor = ExecutorFactory.create_executor(os_type)
     results = []
     
-    console.print(f"\n[bold]{'Simulating' if dry_run else 'Applying'} rules...[/bold]\n")
+    if not json_output:
+        console.print(f"\n[bold]{'Simulating' if dry_run else 'Applying'} rules...[/bold]\n")
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Processing...", total=len(filtered_rules))
-        
+    if json_output:
+        # No progress bar for JSON output
         for rule in filtered_rules:
             rule_id = rule.get("rule", {}).get("id")
             description = rule.get("rule", {}).get("description", "")
             
-            progress.update(task, description=f"Processing {rule_id}...")
-            
             try:
                 if dry_run:
-                    result = {"rule_id": rule_id, "status": "dry_run", "message": "Would apply"}
+                    result = {"rule_id": rule_id, "status": "dry_run", "message": "Would apply", "description": description}
                 else:
                     result = executor.apply_rule(rule, level, backup_dir)
+                    result["description"] = description
                 
                 results.append(result)
                 if logger:
@@ -550,14 +558,52 @@ def apply(
                     "rule_id": rule_id,
                     "status": "error",
                     "message": str(e),
+                    "description": description,
                 })
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Processing...", total=len(filtered_rules))
             
-            progress.advance(task)
+            for rule in filtered_rules:
+                rule_id = rule.get("rule", {}).get("id")
+                description = rule.get("rule", {}).get("description", "")
+                
+                progress.update(task, description=f"Processing {rule_id}...")
+                
+                try:
+                    if dry_run:
+                        result = {"rule_id": rule_id, "status": "dry_run", "message": "Would apply", "description": description}
+                    else:
+                        result = executor.apply_rule(rule, level, backup_dir)
+                        result["description"] = description
+                    
+                    results.append(result)
+                    if logger:
+                        logger.info(f"Applied rule {rule_id}: {result['status']}")
+                except Exception as e:
+                    if logger:
+                        logger.error(f"Error applying rule {rule_id}: {e}")
+                    results.append({
+                        "rule_id": rule_id,
+                        "status": "error",
+                        "message": str(e),
+                        "description": description,
+                    })
+                
+                progress.advance(task)
 
-    _display_apply_results(results, dry_run)
+    # Handle output
+    if json_output:
+        _output_apply_json_to_console(results, os_detector, level, dry_run)
+    else:
+        _display_apply_results(results, dry_run)
 
     needs_reboot = any(r.get("requires_reboot", False) for r in results)
-    if needs_reboot and not dry_run:
+    if needs_reboot and not dry_run and not json_output:
         console.print("\n[bold yellow]System reboot required for some changes to take effect[/bold yellow]")
 
 
@@ -571,8 +617,7 @@ def apply(
 @click.option(
     "--output",
     type=click.Path(),
-    required=True,
-    help="Output file path",
+    help="Output file path (not required with --json flag)",
 )
 @click.option(
     "--level",
@@ -580,18 +625,34 @@ def apply(
     default="moderate",
     help="Hardening level for the report",
 )
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output report as JSON to console",
+)
 @click.pass_context
-def report(ctx, format: str, output: str, level: str):
+def report(ctx, format: str, output: str, level: str, json_output: bool):
     """
     Generate a compliance report.
     
     This runs a check and generates a formatted report.
     Supported formats: text (console), json, html, csv, markdown, pdf
     """
+    # Validate options
+    if json_output and output:
+        console.print("[red]Error: Cannot use --json with --output. Use --json for console output or --output for file output.[/red]")
+        sys.exit(1)
+    
+    if not json_output and not output:
+        console.print("[red]Error: --output is required when not using --json flag[/red]")
+        sys.exit(1)
+    
     if logger:
         logger.info(f"Generating {format} report")
     
-    console.print(f"[bold]Generating {format.upper()} report...[/bold]")
+    if not json_output:
+        console.print(f"[bold]Generating {format.upper()} report...[/bold]")
 
     os_detector = OSDetector()
     os_type = os_detector.get_os_type()
@@ -618,6 +679,11 @@ def report(ctx, format: str, output: str, level: str):
         except Exception as e:
             if logger:
                 logger.error(f"Error checking rule: {e}")
+
+    # Handle JSON output to console
+    if json_output:
+        _output_report_json_to_console(results, os_detector, level)
+        return
 
     reporter = ReportGenerator()
     format_map = {
@@ -682,8 +748,14 @@ def report(ctx, format: str, output: str, level: str):
     is_flag=True,
     help="Skip confirmation prompts",
 )
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output results as JSON to console",
+)
 @click.pass_context
-def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, latest: bool, force: bool):
+def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, latest: bool, force: bool, json_output: bool):
     """
     Rollback applied hardening rules using backups.
     
@@ -695,57 +767,96 @@ def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, l
     backup_path = Path(backup_dir)
     
     if not backup_path.exists():
-        console.print(f"[red]Backup directory not found: {backup_dir}[/red]")
+        if json_output:
+            print(json.dumps({"error": f"Backup directory not found: {backup_dir}"}, indent=2))
+        else:
+            console.print(f"[red]Backup directory not found: {backup_dir}[/red]")
         sys.exit(1)
 
     if list_backups:
         backup_files = sorted(backup_path.glob("*.json"), reverse=True)
         
         if not backup_files:
-            console.print(f"[yellow]No backups found in {backup_dir}/[/yellow]")
+            if json_output:
+                print(json.dumps({"backups": [], "total": 0, "message": f"No backups found in {backup_dir}/"}, indent=2))
+            else:
+                console.print(f"[yellow]No backups found in {backup_dir}/[/yellow]")
             return
         
-        console.print(f"\n[bold]Available Backups in {backup_dir}/:[/bold]\n")
-        
-        table = Table(show_header=True, header_style="bold")
-        table.add_column("Rule ID", style="cyan")
-        table.add_column("Timestamp")
-        table.add_column("Backup File")
-        
-        for backup_file in backup_files:
-            try:
-                with open(backup_file, 'r') as f:
-                    metadata = json.load(f)
-                
-                rule_id_str = metadata.get("rule_id", "unknown")
-                timestamp = metadata.get("timestamp", "unknown")
-                
-                table.add_row(
-                    rule_id_str,
-                    timestamp,
-                    backup_file.stem
-                )
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not read {backup_file.name}: {e}[/yellow]")
-        
-        console.print(table)
-        console.print(f"\n[bold]Total: {len(backup_files)} backup(s)[/bold]")
-        console.print("\n[yellow]To rollback, use: syshardn rollback --rule-id <RULE_ID> --latest[/yellow]")
+        if json_output:
+            backups_list = []
+            for backup_file in backup_files:
+                try:
+                    with open(backup_file, 'r') as f:
+                        metadata = json.load(f)
+                    backups_list.append({
+                        "rule_id": metadata.get("rule_id", "unknown"),
+                        "timestamp": metadata.get("timestamp", "unknown"),
+                        "backup_file": backup_file.stem,
+                        "full_path": str(backup_file)
+                    })
+                except Exception as e:
+                    backups_list.append({
+                        "error": f"Could not read {backup_file.name}",
+                        "details": str(e)
+                    })
+            print(json.dumps({"backups": backups_list, "total": len(backup_files)}, indent=2))
+        else:
+            console.print(f"\n[bold]Available Backups in {backup_dir}/:[/bold]\n")
+            
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Rule ID", style="cyan")
+            table.add_column("Timestamp")
+            table.add_column("Backup File")
+            
+            for backup_file in backup_files:
+                try:
+                    with open(backup_file, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    rule_id_str = metadata.get("rule_id", "unknown")
+                    timestamp = metadata.get("timestamp", "unknown")
+                    
+                    table.add_row(
+                        rule_id_str,
+                        timestamp,
+                        backup_file.stem
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not read {backup_file.name}: {e}[/yellow]")
+            
+            console.print(table)
+            console.print(f"\n[bold]Total: {len(backup_files)} backup(s)[/bold]")
+            console.print("\n[yellow]To rollback, use: syshardn rollback --rule-id <RULE_ID> --latest[/yellow]")
         return
 
     if not rule_id:
-        console.print("[red]Error: --rule-id required for rollback (or use --list to see available backups)[/red]")
+        if json_output:
+            print(json.dumps({"error": "--rule-id required for rollback (or use --list to see available backups)"}, indent=2))
+        else:
+            console.print("[red]Error: --rule-id required for rollback (or use --list to see available backups)[/red]")
         sys.exit(1)
 
     backup_files = sorted(backup_path.glob(f"{rule_id}_*.json"), reverse=True)
     
     if not backup_files:
-        console.print(f"[red]No backups found for rule {rule_id}[/red]")
+        if json_output:
+            print(json.dumps({"error": f"No backups found for rule {rule_id}"}, indent=2))
+        else:
+            console.print(f"[red]No backups found for rule {rule_id}[/red]")
         sys.exit(1)
 
     if latest or len(backup_files) == 1:
         selected_backup = backup_files[0]
     else:
+        if json_output:
+            # For JSON output with multiple backups, require --latest or interactive mode
+            print(json.dumps({
+                "error": "Multiple backups found. Use --latest to select the most recent one.",
+                "available_backups": [str(f) for f in backup_files]
+            }, indent=2))
+            sys.exit(1)
+        
         console.print(f"\n[bold]Multiple backups found for {rule_id}:[/bold]\n")
         for idx, backup_file in enumerate(backup_files, 1):
             console.print(f"  {idx}. {backup_file.name}")
@@ -763,13 +874,14 @@ def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, l
         console.print(f"[red]Error reading backup metadata: {e}[/red]")
         sys.exit(1)
 
-    console.print(f"\n[bold]Rollback Details:[/bold]")
-    console.print(f"  Rule ID: {metadata.get('rule_id')}")
-    console.print(f"  Timestamp: {metadata.get('timestamp')}")
-    console.print(f"  Backup file: {selected_backup.name}")
-    console.print()
+    if not json_output:
+        console.print(f"\n[bold]Rollback Details:[/bold]")
+        console.print(f"  Rule ID: {metadata.get('rule_id')}")
+        console.print(f"  Timestamp: {metadata.get('timestamp')}")
+        console.print(f"  Backup file: {selected_backup.name}")
+        console.print()
     
-    if not force:
+    if not force and not json_output:
         if not click.confirm(click.style("Do you want to proceed with rollback?", fg="yellow"), default=False):
             console.print("[yellow]Rollback cancelled[/yellow]")
             return
@@ -779,10 +891,11 @@ def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, l
             if not click.confirm(click.style("Continue anyway?", fg="yellow"), default=False):
                 return
     else:
-        if not _check_privileges():
+        if not _check_privileges() and not json_output:
             console.print("[yellow]Warning: Rollback typically requires root/admin privileges[/yellow]")
 
-    console.print("\n[bold]Performing rollback...[/bold]\n")
+    if not json_output:
+        console.print("\n[bold]Performing rollback...[/bold]\n")
     
     try:
         rule = metadata.get("rule", {})
@@ -794,10 +907,26 @@ def rollback(ctx, backup_dir: str, rule_id: Optional[str], list_backups: bool, l
 
         executor.rollback_from_backup(backup_location)
         
-        console.print(f"[green]✓ Successfully rolled back {rule_id}[/green]")
+        if json_output:
+            print(json.dumps({
+                "status": "success",
+                "rule_id": rule_id,
+                "timestamp": metadata.get("timestamp"),
+                "backup_file": str(selected_backup),
+                "message": f"Successfully rolled back {rule_id}"
+            }, indent=2))
+        else:
+            console.print(f"[green]✓ Successfully rolled back {rule_id}[/green]")
         
     except Exception as e:
-        console.print(f"[red]✗ Rollback failed: {e}[/red]")
+        if json_output:
+            print(json.dumps({
+                "status": "error",
+                "rule_id": rule_id,
+                "message": f"Rollback failed: {str(e)}"
+            }, indent=2))
+        else:
+            console.print(f"[red]✗ Rollback failed: {e}[/red]")
         if logger:
             logger.exception(f"Rollback failed for {rule_id}")
         sys.exit(1)
@@ -1011,6 +1140,46 @@ def _output_json_to_console(results: List[dict], os_detector: OSDetector, level:
     
     # Print JSON to console with pretty formatting
     print(json.dumps(report_data, indent=2, ensure_ascii=False))
+
+
+def _output_apply_json_to_console(results: List[dict], os_detector: OSDetector, level: str, dry_run: bool):
+    """Output apply results as JSON to console."""
+    import json
+    from datetime import datetime
+    
+    # Calculate summary statistics
+    total = len(results)
+    success = sum(1 for r in results if r.get('status') in ['success', 'dry_run'])
+    failed = sum(1 for r in results if r.get('status') == 'error')
+    skipped = sum(1 for r in results if r.get('status') == 'skipped')
+    needs_reboot = any(r.get("requires_reboot", False) for r in results)
+    
+    report_data = {
+        "title": f"System Hardening Apply - {level.upper()}",
+        "mode": "dry_run" if dry_run else "apply",
+        "generated": datetime.now().isoformat(),
+        "os_info": {
+            "type": os_detector.get_os_type(),
+            "version": os_detector.get_version(),
+            "distro": os_detector.get_distro() if hasattr(os_detector, 'get_distro') else None
+        },
+        "summary": {
+            "total": total,
+            "success": success,
+            "failed": failed,
+            "skipped": skipped,
+            "needs_reboot": needs_reboot
+        },
+        "results": results
+    }
+    
+    # Print JSON to console with pretty formatting
+    print(json.dumps(report_data, indent=2, ensure_ascii=False))
+
+
+def _output_report_json_to_console(results: List[dict], os_detector: OSDetector, level: str):
+    """Output report results as JSON to console (same as check --json)."""
+    _output_json_to_console(results, os_detector, level)
 
 
 def _generate_report(results: List[dict], report_path: str, os_detector: OSDetector, level: str):

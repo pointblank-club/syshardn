@@ -860,7 +860,7 @@ def _display_check_results(results: List[dict], verbose: bool):
     table.add_column("Rule ID", style="cyan", width=9)
     table.add_column("Status", width=8)
     table.add_column("Description", style="dim", width=35)
-    table.add_column("Message", width=40)
+    table.add_column("Message")
     
     passed = failed = errors = 0
     
@@ -884,7 +884,7 @@ def _display_check_results(results: List[dict], verbose: bool):
         desc_truncated = description[:32] + "..." if len(description) > 32 else description
         
         if verbose or status != "pass":
-            table.add_row(rule_id, status_str, desc_truncated, message[:37])
+            table.add_row(rule_id, status_str, desc_truncated, message)
     
     console.print(table)
     console.print(f"\n[bold]Summary:[/bold] {passed} passed, {failed} failed, {errors} errors")

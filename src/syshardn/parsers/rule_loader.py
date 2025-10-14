@@ -58,7 +58,7 @@ class RuleLoader:
             description = rule_data.get("rule", {}).get("description", "No description")
             if len(description) > 60:
                 description = description[:57] + "..."
-            console.print(f"[dim]Loaded {rule_id}:[/dim] {description}")
+            console.print(f"[dim]Loaded {rule_id}: {description}[/dim]")
 
             rule_data["_file_path"] = str(rule_file)
 

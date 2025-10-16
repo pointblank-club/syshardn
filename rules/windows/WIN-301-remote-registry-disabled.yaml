@@ -1,0 +1,141 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-301
+  category: Services
+  subcategory: System Services
+  description: Ensure 'Remote Registry (RemoteRegistry)' is set to 'Disabled'
+  severity: high
+  
+  audit:
+    cis_reference: 5.2
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The Remote Registry service allows remote users to modify the Windows registry on this system. This service should be disabled to prevent unauthorized remote registry access, which could lead to configuration changes, privilege escalation, or exposure of sensitive information stored in the registry.
+    impact: Remote registry access will not be available. Registry modifications must be made locally. Most administrative tasks do not require this service. Normal operations will not be affected.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: Disabled
+    moderate:
+      enabled: true
+      value: Disabled
+    strict:
+      enabled: true
+      value: Disabled
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name RemoteRegistry -ErrorAction Stop
+      Write-Output $service.StartType
+    } catch {
+      Write-Output "NotInstalled"
+    }
+  expected:
+    type: string
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    $serviceName = 'RemoteRegistry'
+    try {
+      $service = Get-Service -Name $serviceName -ErrorAction Stop
+      if ($service.Status -eq 'Running') {
+        Stop-Service -Name $serviceName -Force -ErrorAction Stop
+      }
+      Set-Service -Name $serviceName -StartupType {{hardening_value}} -ErrorAction Stop
+    } catch {
+      Write-Error "Failed to disable service: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 60
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name RemoteRegistry -ErrorAction Stop
+      $expected = '{{hardening_value}}'
+      if ($service.StartType -eq $expected) { exit 0 } else { exit 1 }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-301_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $service = Get-Service -Name RemoteRegistry -ErrorAction Stop
+      "$($service.StartType)|$($service.Status)" | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    } catch {
+      'NotInstalled|Unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $backup = Get-Content '{{backup_location}}' | Select-Object -First 1
+      $parts = $backup -split '\|'
+      $oldStartType = $parts[0]
+      $oldStatus = $parts[1]
+      try {
+        if ($oldStartType -ne 'NotInstalled') {
+          Set-Service -Name RemoteRegistry -StartupType $oldStartType -ErrorAction Stop
+          if ($oldStatus -eq 'Running') {
+            Start-Service -Name RemoteRegistry -ErrorAction SilentlyContinue
+          }
+        }
+      } catch {
+        Write-Warning "Failed to restore service: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 60
+  
+logging:
+  log_level: INFO
+  log_category: system_services
+  audit_trail: true
+  
+reporting:
+  report_section: System Services
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - services
+  - remote-registry
+  - registry
+  - remote-access
+  - security
+  - cis
+  
+notes: |
+  Remote Registry service enables remote registry operations via RPC.
+  Service name: RemoteRegistry
+  Disabling prevents remote registry enumeration and modification.
+  Local registry access remains fully functional.
+  Some legacy management tools may require this service.
+  Use Group Policy or modern management tools instead.
+  StartType Disabled is most secure for production systems.

@@ -1,0 +1,133 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-502
+  category: System File Permissions
+  subcategory: Critical Files
+  description: Ensure permissions on /etc/group are configured (644)
+  severity: high
+  
+  audit:
+    cis_reference: 6.1.4
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The /etc/group file contains group membership information used by many system utilities and applications. This file should be readable by all users for proper group-based access control, but writable only by root to prevent unauthorized modification of group memberships.
+    impact: Setting proper permissions on /etc/group ensures that only root can modify group information while allowing all users to read it for normal system operations. This should not impact legitimate system functionality.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value:
+        permissions: "644"
+        owner: "root"
+        group: "root"
+    moderate:
+      enabled: true
+      value:
+        permissions: "644"
+        owner: "root"
+        group: "root"
+    strict:
+      enabled: true
+      value:
+        permissions: "644"
+        owner: "root"
+        group: "root"
+  
+check:
+  type: command
+  command: |
+    perms=$(stat -c "%a" /etc/group)
+    owner=$(stat -c "%U" /etc/group)
+    group=$(stat -c "%G" /etc/group)
+    
+    if [ "$perms" = "644" ] && [ "$owner" = "root" ] && [ "$group" = "root" ]; then
+      echo "0"
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    chmod {{hardening_value.permissions}} /etc/group
+    chown {{hardening_value.owner}}:{{hardening_value.group}} /etc/group
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    perms=$(stat -c "%a" /etc/group)
+    owner=$(stat -c "%U" /etc/group)
+    group=$(stat -c "%G" /etc/group)
+    
+    if [ "$perms" = "{{hardening_value.permissions}}" ] && [ "$owner" = "{{hardening_value.owner}}" ] && [ "$group" = "{{hardening_value.group}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-502_{{timestamp}}.backup"
+  backup_command: |
+    stat -c "%a %U:%G" /etc/group > "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      perms=$(awk '{print $1}' "{{backup_location}}")
+      owner=$(awk -F: '{print $1}' "{{backup_location}}" | awk '{print $2}')
+      group=$(awk -F: '{print $2}' "{{backup_location}}")
+      
+      chmod "$perms" /etc/group
+      chown "$owner:$group" /etc/group
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: file_permissions
+  audit_trail: true
+  
+reporting:
+  report_section: File System Security
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - file-permissions
+  - system-files
+  - group
+  - access-control
+  - cis
+  
+notes: |
+  /etc/group contains group membership information and must be protected.
+  Permissions 644 allow read access for all users but write access only for root.
+  This file must be readable by all users for proper group-based access control.
+  Ownership should always be root:root.

@@ -1,0 +1,143 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-603
+  category: Services
+  subcategory: Server Services
+  description: Ensure SNMP services are not in use
+  severity: medium
+  
+  audit:
+    cis_reference: 2.2.14
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Simple Network Management Protocol (SNMP) is used for network management and monitoring. SNMP can be exploited if not properly configured, and weak community strings can expose sensitive system information. Unless SNMP is required for monitoring, it should be disabled.
+    impact: SNMP services will not be available for network monitoring. Systems will not respond to SNMP queries. This should not impact systems that do not require SNMP-based monitoring.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: disabled
+    moderate:
+      enabled: true
+      value: disabled
+    strict:
+      enabled: true
+      value: disabled
+  
+check:
+  type: command
+  command: |
+    if systemctl list-unit-files | grep -Eq "snmpd.service|snmp.service"; then
+      status=$(systemctl is-enabled snmpd 2>/dev/null || systemctl is-enabled snmp 2>/dev/null || echo "disabled")
+      echo "$status"
+    else
+      echo "not-installed"
+    fi
+  expected:
+    type: string
+    operator: "in"
+    value: ['disabled', 'masked', 'not-installed']
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if systemctl list-unit-files | grep -q snmpd.service; then
+      systemctl stop snmpd.service 2>/dev/null || true
+      systemctl disable snmpd.service 2>/dev/null || true
+      systemctl mask snmpd.service 2>/dev/null || true
+    fi
+    
+    if systemctl list-unit-files | grep -q snmp.service; then
+      systemctl stop snmp.service 2>/dev/null || true
+      systemctl disable snmp.service 2>/dev/null || true
+      systemctl mask snmp.service 2>/dev/null || true
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    if systemctl list-unit-files | grep -Eq "snmpd.service|snmp.service"; then
+      status=$(systemctl is-enabled snmpd 2>/dev/null || systemctl is-enabled snmp 2>/dev/null || echo "disabled")
+      if [ "$status" = "disabled" ] || [ "$status" = "masked" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    else
+      exit 0
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-603_{{timestamp}}.backup"
+  backup_command: |
+    if systemctl list-unit-files | grep -q snmpd.service; then
+      systemctl is-enabled snmpd 2>/dev/null > "{{backup_location}}" || echo "disabled" > "{{backup_location}}"
+    elif systemctl list-unit-files | grep -q snmp.service; then
+      systemctl is-enabled snmp 2>/dev/null > "{{backup_location}}" || echo "disabled" > "{{backup_location}}"
+    else
+      echo "not-installed" > "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      status=$(cat "{{backup_location}}")
+      if [ "$status" = "enabled" ]; then
+        if systemctl list-unit-files | grep -q snmpd.service; then
+          systemctl unmask snmpd.service 2>/dev/null || true
+          systemctl enable snmpd.service 2>/dev/null || true
+          systemctl start snmpd.service 2>/dev/null || true
+        elif systemctl list-unit-files | grep -q snmp.service; then
+          systemctl unmask snmp.service 2>/dev/null || true
+          systemctl enable snmp.service 2>/dev/null || true
+          systemctl start snmp.service 2>/dev/null || true
+        fi
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: services_management
+  audit_trail: true
+  
+reporting:
+  report_section: Service Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - services
+  - snmp
+  - network-management
+  - monitoring
+  - cis
+  
+notes: |
+  SNMP should be disabled unless specifically required for network monitoring.
+  If SNMP is needed, use SNMPv3 with strong authentication and encryption.
+  SNMPv1 and SNMPv2c use community strings that are transmitted in clear text.
+  Consider removing the package entirely if not needed.

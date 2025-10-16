@@ -1,0 +1,127 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-100
+  category: Process Hardening
+  subcategory: ASLR
+  description: Ensure address space layout randomization (ASLR) is enabled
+  severity: high
+  
+  audit:
+    cis_reference: 1.5.3
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Address space layout randomization (ASLR) is an exploit mitigation technique that randomly arranges the address space positions of key data areas of a process. This makes it more difficult for an attacker to predict target addresses and helps prevent buffer overflow attacks.
+    impact: ASLR is enabled by default on modern Linux systems. This should not impact normal operations.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 2
+    moderate:
+      enabled: true
+      value: 2
+    strict:
+      enabled: true
+      value: 2
+  
+check:
+  type: command
+  command: sysctl kernel.randomize_va_space | awk '{print $3}'
+  expected:
+    type: number
+    operator: ">="
+    value: '{{hardening_value}}'
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    sysctl -w kernel.randomize_va_space={{hardening_value}}
+    
+    if ! grep -q "^kernel.randomize_va_space" /etc/sysctl.conf; then
+      echo "kernel.randomize_va_space = {{hardening_value}}" >> /etc/sysctl.conf
+    else
+      sed -i 's/^kernel.randomize_va_space.*/kernel.randomize_va_space = {{hardening_value}}/' /etc/sysctl.conf
+    fi
+    
+    echo "kernel.randomize_va_space = {{hardening_value}}" > /etc/sysctl.d/99-aslr.conf
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    current=$(sysctl -n kernel.randomize_va_space)
+    if [ "$current" -ge "{{hardening_value}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-100_{{timestamp}}.backup"
+  backup_command: |
+    sysctl -n kernel.randomize_va_space > "{{backup_location}}"
+    
+    if grep -q "^kernel.randomize_va_space" /etc/sysctl.conf; then
+      grep "^kernel.randomize_va_space" /etc/sysctl.conf >> "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      old_value=$(head -n 1 "{{backup_location}}")
+      sysctl -w kernel.randomize_va_space=$old_value
+      
+      rm -f /etc/sysctl.d/99-aslr.conf
+      
+      if grep -q "^kernel.randomize_va_space" "{{backup_location}}"; then
+        sed -i 's/^kernel.randomize_va_space.*/kernel.randomize_va_space = '$old_value'/' /etc/sysctl.conf
+      else
+        sed -i '/^kernel.randomize_va_space/d' /etc/sysctl.conf
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: process_hardening
+  audit_trail: true
+  
+reporting:
+  report_section: Process Security
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - aslr
+  - process-hardening
+  - exploit-mitigation
+  - kernel
+  - cis
+  
+notes: |
+  ASLR is a critical security feature that helps prevent memory corruption attacks.
+  Value 2 enables full randomization (recommended).
+  Value 1 enables conservative randomization.
+  Value 0 disables ASLR (not recommended).

@@ -1,0 +1,152 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-800
+  category: Windows Firewall
+  subcategory: Private Profile
+  description: "Ensure 'Windows Firewall: Private: Firewall state' is set to 'On (recommended)'"
+  severity: critical
+  
+  audit:
+    cis_reference: 9.2.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The Windows Firewall Private profile applies to networks identified as private (home or work networks). Enabling the firewall for private networks provides defense-in-depth protection against network-based attacks, even on trusted networks. Insider threats and compromised devices on the same network are mitigated.
+    impact: Windows Firewall will be active for private network connections. Inbound traffic will be filtered according to firewall rules. Outbound connections are typically allowed by default. Some applications may require firewall rules to function.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 'on'
+    moderate:
+      enabled: true
+      value: 'on'
+    strict:
+      enabled: true
+      value: 'on'
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show privateprofile state 2>&1
+      if ($output -match 'State\s+ON') {
+        Write-Output 'on'
+      } elseif ($output -match 'State\s+OFF') {
+        Write-Output 'off'
+      } else {
+        Write-Output 'unknown'
+      }
+    } catch {
+      Write-Output 'unknown'
+    }
+  expected:
+    type: string
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $result = netsh advfirewall set privateprofile state {{hardening_value}} 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to enable firewall: $result"
+        exit 1
+      }
+    } catch {
+      Write-Error "Failed to enable firewall: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show privateprofile state 2>&1
+      $expected = '{{hardening_value}}'
+      if ($expected -eq 'on' -and $output -match 'State\s+ON') {
+        exit 0
+      } elseif ($expected -eq 'off' -and $output -match 'State\s+OFF') {
+        exit 0
+      } else {
+        exit 1
+      }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-800_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $output = netsh advfirewall show privateprofile state 2>&1
+      if ($output -match 'State\s+ON') {
+        'on' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } elseif ($output -match 'State\s+OFF') {
+        'off' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } else {
+        'unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      }
+    } catch {
+      'unknown' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $oldState = Get-Content '{{backup_location}}' | Select-Object -First 1
+      try {
+        if ($oldState -ne 'unknown') {
+          netsh advfirewall set privateprofile state $oldState | Out-Null
+        }
+      } catch {
+        Write-Warning "Failed to restore firewall state: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: windows_firewall
+  audit_trail: true
+  
+reporting:
+  report_section: Windows Firewall
+  priority: critical
+  remediation_complexity: low
+  
+tags:
+  - firewall
+  - windows-firewall
+  - private-profile
+  - network-security
+  - defense-in-depth
+  - cis
+  
+notes: |
+  Windows Firewall has three profiles: Domain, Private, Public.
+  Private profile applies to home/work networks.
+  State ON enables firewall filtering for private networks.
+  State OFF disables firewall (highly insecure).
+  Firewall profiles are automatically selected based on network location.
+  Default inbound action and allowed apps configured separately.
+  Always keep firewall enabled for defense-in-depth security.

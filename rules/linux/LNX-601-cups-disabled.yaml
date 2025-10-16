@@ -1,0 +1,129 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-601
+  category: Services
+  subcategory: Server Services
+  description: Ensure print server services (CUPS) are not in use
+  severity: medium
+  
+  audit:
+    cis_reference: 2.2.5
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The Common Unix Print System (CUPS) provides printing services and accepts print jobs from local and remote systems. Unless a system specifically requires print services, CUPS should be disabled to reduce the attack surface.
+    impact: Print services will not be available. Systems will not be able to print locally or act as a print server. This should not impact servers that do not require printing capabilities.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: disabled
+    moderate:
+      enabled: true
+      value: disabled
+    strict:
+      enabled: true
+      value: disabled
+  
+check:
+  type: command
+  command: |
+    if systemctl list-unit-files | grep -q cups.service; then
+      status=$(systemctl is-enabled cups 2>/dev/null || echo "disabled")
+      echo "$status"
+    else
+      echo "not-installed"
+    fi
+  expected:
+    type: string
+    operator: "in"
+    value: ['disabled', 'masked', 'not-installed']
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if systemctl list-unit-files | grep -q cups.service; then
+      systemctl stop cups.service cups.socket cups.path 2>/dev/null || true
+      systemctl disable cups.service cups.socket cups.path 2>/dev/null || true
+      systemctl mask cups.service cups.socket cups.path 2>/dev/null || true
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    if systemctl list-unit-files | grep -q cups.service; then
+      status=$(systemctl is-enabled cups 2>/dev/null || echo "disabled")
+      if [ "$status" = "disabled" ] || [ "$status" = "masked" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    else
+      exit 0
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-601_{{timestamp}}.backup"
+  backup_command: |
+    if systemctl list-unit-files | grep -q cups.service; then
+      systemctl is-enabled cups 2>/dev/null > "{{backup_location}}" || echo "disabled" > "{{backup_location}}"
+    else
+      echo "not-installed" > "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      status=$(cat "{{backup_location}}")
+      if [ "$status" = "enabled" ]; then
+        systemctl unmask cups.service cups.socket cups.path 2>/dev/null || true
+        systemctl enable cups.service cups.socket cups.path 2>/dev/null || true
+        systemctl start cups.service 2>/dev/null || true
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: services_management
+  audit_trail: true
+  
+reporting:
+  report_section: Service Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - services
+  - cups
+  - printing
+  - server-services
+  - cis
+  
+notes: |
+  CUPS provides printing services and should be disabled on systems that do not require printing.
+  Consider removing the package entirely if printing is not needed.
+  Desktop systems may require CUPS for local printing.
+  Server systems typically do not need print services.

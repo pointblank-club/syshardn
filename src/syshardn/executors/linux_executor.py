@@ -92,9 +92,17 @@ class LinuxExecutor(BaseExecutor):
                         "current_value": None,
                     }
 
+            expected_value_template = expected.get("value")
+            if expected_value_template is None:
+                expected_value = hardening_value
+            elif isinstance(expected_value_template, str):
+                expected_value = self.substitute_variables(expected_value_template, variables)
+            else:
+                expected_value = expected_value_template
+            
             is_compliant = self._compare_values(
                 current_value,
-                hardening_value,
+                expected_value,
                 expected.get("operator", "=="),
                 expected.get("type", "string"),
             )
@@ -110,9 +118,9 @@ class LinuxExecutor(BaseExecutor):
                 return {
                     "rule_id": rule_id,
                     "status": "fail",
-                    "message": f"Non-compliant (current: {current_value}, expected: {hardening_value})",
+                    "message": f"Non-compliant (current: {current_value}, expected: {expected_value})",
                     "current_value": current_value,
-                    "expected_value": hardening_value,
+                    "expected_value": expected_value,
                 }
         
         except Exception as e:
@@ -341,7 +349,7 @@ class LinuxExecutor(BaseExecutor):
         try:
             if value_type == "number":
                 current_val = float(current)
-                expected_val = float(expected)
+                expected_val = float(expected) if not isinstance(expected, list) else float(expected[0])
                 
                 if operator == "==":
                     return current_val == expected_val
@@ -355,12 +363,20 @@ class LinuxExecutor(BaseExecutor):
                     return current_val < expected_val
                 elif operator == "!=":
                     return current_val != expected_val
+                elif operator == "in":
+                    if isinstance(expected, list):
+                        return current_val in [float(x) for x in expected]
+                    return False
             
-            else:
+            else:  # string type
                 if operator == "==":
                     return current.lower() == str(expected).lower()
                 elif operator == "!=":
                     return current.lower() != str(expected).lower()
+                elif operator == "in":
+                    if isinstance(expected, list):
+                        return current.lower() in [str(x).lower() for x in expected]
+                    return False
                 elif operator == "contains":
                     return str(expected).lower() in current.lower()
                 elif operator == "regex":
@@ -369,7 +385,9 @@ class LinuxExecutor(BaseExecutor):
             
             return False
         
-        except Exception:
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error comparing values: {e}")
             return False
     
     def _check_prerequisites(self, prerequisites: list) -> bool:

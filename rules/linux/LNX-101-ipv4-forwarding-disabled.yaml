@@ -1,0 +1,127 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-101
+  category: Network Configuration
+  subcategory: IP Forwarding
+  description: Ensure IPv4 forwarding is disabled
+  severity: medium
+  
+  audit:
+    cis_reference: 3.1.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Setting the flags to 0 ensures that a system with multiple interfaces (e.g., a hard proxy) will never be able to forward packets and thereby act as a router. Unless a system is specifically required to be a router, disable IP forwarding to reduce attack surface.
+    impact: If the system is used as a router, this will break routing functionality. Only disable if the system is not intended to be a router.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 0
+    moderate:
+      enabled: true
+      value: 0
+    strict:
+      enabled: true
+      value: 0
+  
+check:
+  type: command
+  command: sysctl net.ipv4.ip_forward | awk '{print $3}'
+  expected:
+    type: number
+    operator: "=="
+    value: '{{hardening_value}}'
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    sysctl -w net.ipv4.ip_forward={{hardening_value}}
+    sysctl -w net.ipv4.conf.all.forwarding={{hardening_value}}
+    sysctl -w net.ipv4.conf.default.forwarding={{hardening_value}}
+    
+    echo "net.ipv4.ip_forward = {{hardening_value}}" > /etc/sysctl.d/99-ipv4-forwarding.conf
+    echo "net.ipv4.conf.all.forwarding = {{hardening_value}}" >> /etc/sysctl.d/99-ipv4-forwarding.conf
+    echo "net.ipv4.conf.default.forwarding = {{hardening_value}}" >> /etc/sysctl.d/99-ipv4-forwarding.conf
+    
+    for param in "net.ipv4.ip_forward" "net.ipv4.conf.all.forwarding" "net.ipv4.conf.default.forwarding"; do
+      if grep -q "^$param" /etc/sysctl.conf; then
+        sed -i "s/^$param.*/$param = {{hardening_value}}/" /etc/sysctl.conf
+      fi
+    done
+    
+    sysctl -w net.ipv4.route.flush=1
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    current=$(sysctl -n net.ipv4.ip_forward)
+    if [ "$current" -eq "{{hardening_value}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-101_{{timestamp}}.backup"
+  backup_command: |
+    echo "net.ipv4.ip_forward=$(sysctl -n net.ipv4.ip_forward)" > "{{backup_location}}"
+    echo "net.ipv4.conf.all.forwarding=$(sysctl -n net.ipv4.conf.all.forwarding)" >> "{{backup_location}}"
+    echo "net.ipv4.conf.default.forwarding=$(sysctl -n net.ipv4.conf.default.forwarding)" >> "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      while IFS='=' read -r param value; do
+        sysctl -w "$param=$value"
+      done < "{{backup_location}}"
+      
+      rm -f /etc/sysctl.d/99-ipv4-forwarding.conf
+      
+      sysctl -w net.ipv4.route.flush=1
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: network_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: Network Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - network
+  - ipv4
+  - forwarding
+  - routing
+  - cis
+  
+notes: |
+  IPv4 forwarding should be disabled on systems that are not routers.
+  If the system needs to act as a router or gateway, this rule should be skipped.
+  Consider enabling only specific forwarding if selective routing is needed.

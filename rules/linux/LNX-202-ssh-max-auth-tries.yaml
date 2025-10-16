@@ -1,0 +1,118 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-202
+  category: SSH Configuration
+  subcategory: Access Control
+  description: Ensure SSH MaxAuthTries is set to 4 or less
+  severity: medium
+  
+  audit:
+    cis_reference: 5.2.5
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Setting MaxAuthTries to a low value helps prevent brute-force attacks by limiting the number of authentication attempts permitted per connection. This reduces the effectiveness of automated password guessing attacks.
+    impact: Users will have a limited number of authentication attempts before the connection is closed. This should not impact legitimate users but will hinder brute-force attacks.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 4
+    moderate:
+      enabled: true
+      value: 3
+    strict:
+      enabled: true
+      value: 3
+  
+check:
+  type: command
+  command: |
+    if grep -Eq "^\s*MaxAuthTries\s+" /etc/ssh/sshd_config; then
+      grep -E "^\s*MaxAuthTries" /etc/ssh/sshd_config | awk '{print $2}'
+    else
+      echo "6"
+    fi
+  expected:
+    type: number
+    operator: "<="
+    value: '{{hardening_value}}'
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if grep -Eq "^\s*MaxAuthTries" /etc/ssh/sshd_config; then
+      sed -i "s/^\s*MaxAuthTries.*/MaxAuthTries {{hardening_value}}/" /etc/ssh/sshd_config
+    else
+      echo "MaxAuthTries {{hardening_value}}" >> /etc/ssh/sshd_config
+    fi
+    
+    systemctl restart sshd || systemctl restart ssh
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    value=$(grep -E "^\s*MaxAuthTries" /etc/ssh/sshd_config | awk '{print $2}')
+    if [ "$value" -le "{{hardening_value}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-202_{{timestamp}}.backup"
+  backup_command: |
+    cp /etc/ssh/sshd_config "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      cp "{{backup_location}}" /etc/ssh/sshd_config
+      systemctl restart sshd || systemctl restart ssh
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: ssh_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: SSH Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - ssh
+  - access-control
+  - brute-force-protection
+  - authentication
+  - cis
+  
+notes: |
+  MaxAuthTries limits authentication attempts per connection.
+  Default value is typically 6, which is too permissive.
+  Setting to 4 or less provides adequate protection against brute-force attacks.
+  Legitimate users can reconnect if they exceed the limit.

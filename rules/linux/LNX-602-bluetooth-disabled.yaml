@@ -1,0 +1,146 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-602
+  category: Network Devices
+  subcategory: Wireless
+  description: Ensure bluetooth services are not in use
+  severity: medium
+  
+  audit:
+    cis_reference: 3.4
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Bluetooth provides a wireless communication protocol that can be exploited if not properly secured. Unless Bluetooth functionality is required, it should be disabled to reduce the attack surface and prevent potential unauthorized access.
+    impact: Bluetooth functionality will be disabled. Wireless Bluetooth devices will not be usable. This should not impact servers that do not require Bluetooth connectivity.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: disabled
+    moderate:
+      enabled: true
+      value: disabled
+    strict:
+      enabled: true
+      value: disabled
+  
+check:
+  type: command
+  command: |
+    if systemctl list-unit-files | grep -q bluetooth.service; then
+      status=$(systemctl is-enabled bluetooth 2>/dev/null || echo "disabled")
+      echo "$status"
+    else
+      echo "not-installed"
+    fi
+  expected:
+    type: string
+    operator: "in"
+    value: ['disabled', 'masked', 'not-installed']
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if systemctl list-unit-files | grep -q bluetooth.service; then
+      systemctl stop bluetooth.service 2>/dev/null || true
+      systemctl disable bluetooth.service 2>/dev/null || true
+      systemctl mask bluetooth.service 2>/dev/null || true
+    fi
+    
+    if lsmod | grep -q btusb; then
+      rmmod btusb 2>/dev/null || true
+    fi
+    
+    if [ ! -f /etc/modprobe.d/bluetooth.conf ]; then
+      echo "install bluetooth /bin/true" > /etc/modprobe.d/bluetooth.conf
+      echo "blacklist bluetooth" >> /etc/modprobe.d/bluetooth.conf
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    if systemctl list-unit-files | grep -q bluetooth.service; then
+      status=$(systemctl is-enabled bluetooth 2>/dev/null || echo "disabled")
+      if [ "$status" = "disabled" ] || [ "$status" = "masked" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    else
+      exit 0
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-602_{{timestamp}}.backup"
+  backup_command: |
+    if systemctl list-unit-files | grep -q bluetooth.service; then
+      systemctl is-enabled bluetooth 2>/dev/null > "{{backup_location}}" || echo "disabled" > "{{backup_location}}"
+    else
+      echo "not-installed" > "{{backup_location}}"
+    fi
+    
+    if [ -f /etc/modprobe.d/bluetooth.conf ]; then
+      echo "modprobe_exists" >> "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      status=$(head -n 1 "{{backup_location}}")
+      if [ "$status" = "enabled" ]; then
+        systemctl unmask bluetooth.service 2>/dev/null || true
+        systemctl enable bluetooth.service 2>/dev/null || true
+        systemctl start bluetooth.service 2>/dev/null || true
+      fi
+      
+      if ! grep -q "modprobe_exists" "{{backup_location}}"; then
+        rm -f /etc/modprobe.d/bluetooth.conf
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: network_devices
+  audit_trail: true
+  
+reporting:
+  report_section: Network Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - network
+  - bluetooth
+  - wireless
+  - services
+  - cis
+  
+notes: |
+  Bluetooth should be disabled on systems that do not require wireless connectivity.
+  This rule disables both the Bluetooth service and kernel module.
+  Desktop systems may require Bluetooth for wireless peripherals.
+  Server systems typically do not need Bluetooth.

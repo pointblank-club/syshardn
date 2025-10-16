@@ -1,0 +1,155 @@
+metadata:
+  benchmark: CIS Microsoft Windows 10/11 Enterprise Benchmarks v1.12.0
+  os: windows
+  versions:
+    - '10'
+    - '11'
+
+rule:
+  id: WIN-140
+  category: Local Policies
+  subcategory: User Account Control
+  description: "Ensure 'User Account Control: Admin Approval Mode for the Built-in Administrator account' is set to 'Enabled'"
+  severity: high
+  
+  audit:
+    cis_reference: 2.3.17.1
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: This setting controls whether the built-in Administrator account uses Admin Approval Mode. When enabled, the built-in Administrator account must elevate privileges for administrative tasks, providing better security through privilege separation and auditing.
+    impact: The built-in Administrator account will operate with standard user privileges until elevated. Administrative tasks will require explicit elevation, improving security and audit trail.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: 1
+    moderate:
+      enabled: true
+      value: 1
+    strict:
+      enabled: true
+      value: 1
+  
+check:
+  type: command
+  command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'FilterAdministratorToken'
+      if (Test-Path $regPath) {
+        $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $regName
+        if ($null -eq $value) {
+          Write-Output 0
+        } else {
+          Write-Output $value
+        }
+      } else {
+        Write-Output 0
+      }
+    } catch {
+      Write-Output 0
+    }
+  expected:
+    type: number
+    operator: '=='
+    value: '{{hardening_value}}'
+  timeout: 30
+  retry: 2
+  retry_delay: 5
+  
+remediation:
+  type: command
+  prerequisites:
+    - admin_rights
+  backup_before: true
+  command: |
+    $ErrorActionPreference = 'Stop'
+    $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    $regName = 'FilterAdministratorToken'
+    try {
+      if (-not (Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+      }
+      Set-ItemProperty -Path $regPath -Name $regName -Value {{hardening_value}} -Type DWord -Force
+    } catch {
+      Write-Error "Failed to set registry value: $_"
+      exit 1
+    }
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'FilterAdministratorToken'
+      $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction Stop | Select-Object -ExpandProperty $regName
+      $expected = [int]"{{hardening_value}}"
+      if ($value -eq $expected) { exit 0 } else { exit 1 }
+    } catch {
+      exit 1
+    }
+  
+rollback:
+  enabled: true
+  backup_location: '{{backup_dir}}/WIN-140_{{timestamp}}.txt'
+  backup_command: |
+    $ErrorActionPreference = 'Stop'
+    try {
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'FilterAdministratorToken'
+      $value = Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $regName
+      if ($null -eq $value) {
+        'NotSet' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      } else {
+        $value | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+      }
+    } catch {
+      'NotSet' | Out-File -FilePath '{{backup_location}}' -Encoding UTF8
+    }
+  restore_command: |
+    $ErrorActionPreference = 'Stop'
+    if (Test-Path '{{backup_location}}') {
+      $oldValue = Get-Content '{{backup_location}}' | Select-Object -First 1
+      $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      $regName = 'FilterAdministratorToken'
+      try {
+        if ($oldValue -eq 'NotSet') {
+          Remove-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue
+        } else {
+          Set-ItemProperty -Path $regPath -Name $regName -Value ([int]$oldValue) -Type DWord -Force
+        }
+      } catch {
+        Write-Warning "Failed to restore registry value: $_"
+      }
+    }
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: user_account_control
+  audit_trail: true
+  
+reporting:
+  report_section: User Account Control
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - uac
+  - user-account-control
+  - administrator
+  - privilege-elevation
+  - cis
+  
+notes: |
+  FilterAdministratorToken = 1 enables Admin Approval Mode (secure).
+  FilterAdministratorToken = 0 disables Admin Approval Mode (insecure).
+  Applies to the built-in Administrator account (RID 500).
+  Requires EnableLUA (WIN-142) to be enabled for UAC to function.
+  Improves security by requiring explicit privilege elevation.
+  Provides better audit trail of administrative actions.

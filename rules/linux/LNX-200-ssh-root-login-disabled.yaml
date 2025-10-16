@@ -1,0 +1,118 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-200
+  category: SSH Configuration
+  subcategory: Access Control
+  description: Ensure SSH PermitRootLogin is disabled
+  severity: high
+  
+  audit:
+    cis_reference: 5.2.7
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: The root user should never be allowed to log in directly via SSH. This reduces the risk of attackers gaining full system access. Users should log in with their personal accounts and use sudo or su for privileged operations, which provides better accountability and auditability.
+    impact: Root will not be able to log in directly via SSH. Users must use their own accounts and escalate privileges as needed. This is a security best practice.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: prohibit-password
+    moderate:
+      enabled: true
+      value: no
+    strict:
+      enabled: true
+      value: no
+  
+check:
+  type: command
+  command: |
+    if grep -Eq "^\s*PermitRootLogin\s+(no|prohibit-password)" /etc/ssh/sshd_config; then
+      value=$(grep -E "^\s*PermitRootLogin" /etc/ssh/sshd_config | awk '{print $2}')
+      echo "$value"
+    else
+      echo "yes"
+    fi
+  expected:
+    type: string
+    operator: "in"
+    value: ['no', 'prohibit-password']
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if grep -Eq "^\s*PermitRootLogin" /etc/ssh/sshd_config; then
+      sed -i "s/^\s*PermitRootLogin.*/PermitRootLogin {{hardening_value}}/" /etc/ssh/sshd_config
+    else
+      echo "PermitRootLogin {{hardening_value}}" >> /etc/ssh/sshd_config
+    fi
+    
+    systemctl restart sshd || systemctl restart ssh
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    if grep -Eq "^\s*PermitRootLogin\s+{{hardening_value}}" /etc/ssh/sshd_config; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-200_{{timestamp}}.backup"
+  backup_command: |
+    cp /etc/ssh/sshd_config "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      cp "{{backup_location}}" /etc/ssh/sshd_config
+      systemctl restart sshd || systemctl restart ssh
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: ssh_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: SSH Security
+  priority: high
+  remediation_complexity: low
+  
+tags:
+  - ssh
+  - access-control
+  - root-login
+  - authentication
+  - cis
+  
+notes: |
+  Disabling root login via SSH is a critical security measure.
+  'prohibit-password' allows root login only with key-based authentication.
+  'no' completely disables root login via SSH (most secure).
+  Users should use their own accounts and sudo for administrative tasks.

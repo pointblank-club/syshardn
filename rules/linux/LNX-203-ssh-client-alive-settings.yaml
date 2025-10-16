@@ -1,0 +1,142 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-203
+  category: SSH Configuration
+  subcategory: Session Management
+  description: Ensure SSH ClientAliveInterval and ClientAliveCountMax are configured
+  severity: medium
+  
+  audit:
+    cis_reference: 5.2.13
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Having idle SSH sessions creates a security risk as unattended sessions can be hijacked. Configuring ClientAliveInterval and ClientAliveCountMax ensures that idle sessions are automatically terminated after a period of inactivity.
+    impact: SSH sessions that are idle for more than the configured timeout (ClientAliveInterval × ClientAliveCountMax seconds) will be automatically disconnected. Users will need to reconnect if their session times out.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value:
+        ClientAliveInterval: 300
+        ClientAliveCountMax: 3
+    moderate:
+      enabled: true
+      value:
+        ClientAliveInterval: 300
+        ClientAliveCountMax: 2
+    strict:
+      enabled: true
+      value:
+        ClientAliveInterval: 180
+        ClientAliveCountMax: 2
+  
+check:
+  type: command
+  command: |
+    interval=$(grep -E "^\s*ClientAliveInterval" /etc/ssh/sshd_config | awk '{print $2}')
+    countmax=$(grep -E "^\s*ClientAliveCountMax" /etc/ssh/sshd_config | awk '{print $2}')
+    
+    if [ -z "$interval" ]; then
+      interval=0
+    fi
+    if [ -z "$countmax" ]; then
+      countmax=3
+    fi
+    
+    if [ "$interval" -gt 0 ] && [ "$interval" -le 300 ] && [ "$countmax" -le 3 ]; then
+      echo "0"
+    else
+      echo "1"
+    fi
+  expected:
+    type: number
+    operator: "=="
+    value: 0
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if grep -Eq "^\s*ClientAliveInterval" /etc/ssh/sshd_config; then
+      sed -i "s/^\s*ClientAliveInterval.*/ClientAliveInterval {{hardening_value.ClientAliveInterval}}/" /etc/ssh/sshd_config
+    else
+      echo "ClientAliveInterval {{hardening_value.ClientAliveInterval}}" >> /etc/ssh/sshd_config
+    fi
+    
+    if grep -Eq "^\s*ClientAliveCountMax" /etc/ssh/sshd_config; then
+      sed -i "s/^\s*ClientAliveCountMax.*/ClientAliveCountMax {{hardening_value.ClientAliveCountMax}}/" /etc/ssh/sshd_config
+    else
+      echo "ClientAliveCountMax {{hardening_value.ClientAliveCountMax}}" >> /etc/ssh/sshd_config
+    fi
+    
+    systemctl restart sshd || systemctl restart ssh
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    interval=$(grep -E "^\s*ClientAliveInterval" /etc/ssh/sshd_config | awk '{print $2}')
+    countmax=$(grep -E "^\s*ClientAliveCountMax" /etc/ssh/sshd_config | awk '{print $2}')
+    
+    if [ "$interval" -le "{{hardening_value.ClientAliveInterval}}" ] && [ "$countmax" -le "{{hardening_value.ClientAliveCountMax}}" ]; then
+      exit 0
+    else
+      exit 1
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-203_{{timestamp}}.backup"
+  backup_command: |
+    cp /etc/ssh/sshd_config "{{backup_location}}"
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      cp "{{backup_location}}" /etc/ssh/sshd_config
+      systemctl restart sshd || systemctl restart ssh
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: ssh_configuration
+  audit_trail: true
+  
+reporting:
+  report_section: SSH Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - ssh
+  - session-management
+  - timeout
+  - idle-sessions
+  - cis
+  
+notes: |
+  ClientAliveInterval sets the timeout in seconds after which the server sends a message to the client.
+  ClientAliveCountMax sets the number of client alive messages sent without response before disconnecting.
+  Effective timeout = ClientAliveInterval × ClientAliveCountMax seconds.
+  Example: 300 × 3 = 900 seconds (15 minutes) of idle time before disconnect.

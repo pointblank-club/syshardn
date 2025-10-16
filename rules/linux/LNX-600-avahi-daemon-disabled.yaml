@@ -1,0 +1,129 @@
+metadata:
+  benchmark: CIS Linux Benchmarks v3.0.0
+  os: linux
+  distros:
+    - ubuntu
+    - debian
+    - rhel
+    - centos
+    - fedora
+  versions:
+    ubuntu: ['20.04', '22.04', '24.04']
+    debian: ['10', '11', '12']
+    rhel: ['7', '8', '9']
+    centos: ['7', '8', '9']
+    fedora: ['36', '37', '38']
+
+rule:
+  id: LNX-600
+  category: Services
+  subcategory: Server Services
+  description: Ensure avahi daemon services are not in use
+  severity: medium
+  
+  audit:
+    cis_reference: 2.2.4
+    compliance_frameworks:
+      - NIST SP 800-53
+      - ISO 27001
+      - PCI-DSS
+    rationale: Avahi is a zero-configuration networking implementation that allows programs to publish and discover services and hosts running on a local network. Unless required, avahi should be disabled as it can leak system information and provide an attack vector.
+    impact: Avahi will be disabled and services will not be discoverable via mDNS/DNS-SD. This should not impact systems that do not require local network service discovery.
+  
+  hardening_levels:
+    basic:
+      enabled: true
+      value: disabled
+    moderate:
+      enabled: true
+      value: disabled
+    strict:
+      enabled: true
+      value: disabled
+  
+check:
+  type: command
+  command: |
+    if systemctl list-unit-files | grep -q avahi-daemon.service; then
+      status=$(systemctl is-enabled avahi-daemon 2>/dev/null || echo "disabled")
+      echo "$status"
+    else
+      echo "not-installed"
+    fi
+  expected:
+    type: string
+    operator: "in"
+    value: ['disabled', 'masked', 'not-installed']
+  timeout: 10
+  retry: 2
+  retry_delay: 2
+  
+remediation:
+  type: command
+  prerequisites:
+    - root_access
+  backup_before: true
+  command: |
+    if systemctl list-unit-files | grep -q avahi-daemon.service; then
+      systemctl stop avahi-daemon.service avahi-daemon.socket 2>/dev/null || true
+      systemctl disable avahi-daemon.service avahi-daemon.socket 2>/dev/null || true
+      systemctl mask avahi-daemon.service avahi-daemon.socket 2>/dev/null || true
+    fi
+  requires_reboot: false
+  timeout: 30
+  verify_after: true
+  verify_command: |
+    if systemctl list-unit-files | grep -q avahi-daemon.service; then
+      status=$(systemctl is-enabled avahi-daemon 2>/dev/null || echo "disabled")
+      if [ "$status" = "disabled" ] || [ "$status" = "masked" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    else
+      exit 0
+    fi
+  
+rollback:
+  enabled: true
+  backup_location: "{{backup_dir}}/LNX-600_{{timestamp}}.backup"
+  backup_command: |
+    if systemctl list-unit-files | grep -q avahi-daemon.service; then
+      systemctl is-enabled avahi-daemon 2>/dev/null > "{{backup_location}}" || echo "disabled" > "{{backup_location}}"
+    else
+      echo "not-installed" > "{{backup_location}}"
+    fi
+  restore_command: |
+    if [ -f "{{backup_location}}" ]; then
+      status=$(cat "{{backup_location}}")
+      if [ "$status" = "enabled" ]; then
+        systemctl unmask avahi-daemon.service avahi-daemon.socket 2>/dev/null || true
+        systemctl enable avahi-daemon.service avahi-daemon.socket 2>/dev/null || true
+        systemctl start avahi-daemon.service 2>/dev/null || true
+      fi
+    fi
+  requires_reboot: false
+  timeout: 30
+  
+logging:
+  log_level: INFO
+  log_category: services_management
+  audit_trail: true
+  
+reporting:
+  report_section: Service Security
+  priority: medium
+  remediation_complexity: low
+  
+tags:
+  - services
+  - avahi
+  - zero-conf
+  - network-discovery
+  - cis
+  
+notes: |
+  Avahi implements Apple's Zeroconf architecture (mDNS/DNS-SD).
+  Should be disabled unless local network service discovery is required.
+  Avahi can leak information about the system and running services.
+  Consider removing the package entirely if not needed.

@@ -375,7 +375,7 @@ This tool makes significant changes to system configuration. Always:
 - Test in non-production environments first
 - Review rules before applying
 - Maintain backups
-- Understand the impact of each rule
+- Understand the impact of each rule.
 - Have a rollback plan.
 
 The authors are not responsible for any system issues or data loss resulting from the use of this tool.

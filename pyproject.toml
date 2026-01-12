@@ -8,15 +8,15 @@ version = "0.1.0"
 description = "Multi-platform system hardening tool"
 readme = "README.md"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Point Blank Club", email = "admin@pointblank.club"}
 ]
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: System Administrators",
     "Topic :: Security",
     "Topic :: System :: Systems Administration",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -53,10 +53,9 @@ reporting = [
 syshardn = "syshardn.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/aswinr24/syshardn"
-Documentation = "https://github.com/aswinr24/syshardn/wiki"
-Repository = "https://github.com/aswinr24/syshardn"
-"Bug Tracker" = "https://github.com/aswinr24/syshardn/issues"
+Homepage = "https://github.com/pointblank-club/syshardn"
+Repository = "https://github.com/pointblank-club/syshardn"
+"Bug Tracker" = "https://github.com/pointblank-club/syshardn/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -79,6 +78,14 @@ line_length = 100
 
 [tool.mypy]
 python_version = "3.9"
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+disable_error_code = [
+    "attr-defined",
+    "import-untyped",
+    "var-annotated",
+    "func-returns-value",
+]

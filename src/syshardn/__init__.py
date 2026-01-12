@@ -6,8 +6,8 @@ and security best practices across Windows and Linux platforms.
 """
 
 __version__ = "0.1.0"
-__author__ = "Your Name"
-__license__ = "MIT"
+__author__ = "Point Blank Club"
+__license__ = "Apache-2.0"
 
 from syshardn.parsers.rule_loader import RuleLoader
 from syshardn.core.os_detector import OSDetector

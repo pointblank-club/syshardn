@@ -9,11 +9,6 @@ def runner():
     return CliRunner()
 
 
-@pytest.fixture
-def runner():
-    return CliRunner()
-
-
 @pytest.mark.parametrize(
     "args",
     [

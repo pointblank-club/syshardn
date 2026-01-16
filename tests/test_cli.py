@@ -10,32 +10,34 @@ def runner():
 
 
 @pytest.mark.parametrize(
-    "args",
+    "args, substrings",
     [
-        ["--version"],
-        ["--help"],
+        (["--version"], ["SysHardn", "version"]),
+        (["--help"], ["Usage:", "Options:", "Commands:"]),
     ],
+    # Optionally specify IDs for nicer pytest results
+    ids=["version", "help"],
 )
-def test_cli_options(runner, args):
+def test_cli_options(runner, args, substrings):
     result = runner.invoke(cli, args)
 
     assert result.exit_code == 0
-    assert result.output
+    for substring in substrings:
+        assert substring in result.output
 
 
 @pytest.mark.parametrize(
-    "args",
+    "command",
     [
-        # Use --help to verify command exists and parses options without running actual logic
-        ["check", "--help"],
-        ["apply", "--help"],
-        ["report", "--help"],
-        ["rollback", "--help"],
-        ["list-rules", "--help"],
+        "check",
+        "apply",
+        "report",
+        "rollback",
+        "list-rules",
     ],
 )
-def test_cli_subcommands(runner, args):
-    result = runner.invoke(cli, args)
+def test_cli_commands(runner, command):
+    result = runner.invoke(cli, [command, "--help"])
 
     assert result.exit_code == 0
-    assert result.output
+    assert "Usage:" in result.output
